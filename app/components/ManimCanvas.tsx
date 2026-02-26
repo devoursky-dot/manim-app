@@ -78,7 +78,12 @@ export default function ManimCanvas() {
     const runAnimation = async () => {
       try {
         // 1. 씬 생성
+       // containerRef.current가 존재하는지 먼저 확인합니다.
+      if (containerRef.current) {
         scene = new Scene(containerRef.current);
+      } else {
+        return; // 없으면 아무것도 하지 않고 중단
+      }
 
       // 2. 하얀색 좌표축 생성
       const axes = new Axes({
