@@ -66,13 +66,13 @@ export function Canvas({ viewport, setViewport, options, playKey }: ManimCanvasP
       ref={containerRef} 
       className="w-full h-full cursor-move touch-none"
       onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
+      onMouseDown={(e) => handleMouseDown(e, containerRef.current)}
       onMouseMove={(e) => handleMouseMove(e, containerRef.current)}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onTouchStart={handleTouchStart}
+      onMouseUp={(e) => handleMouseUp(e, containerRef.current)}
+      onMouseLeave={(e) => handleMouseUp(e, containerRef.current)}
+      onTouchStart={(e) => handleTouchStart(e, containerRef.current)}
       onTouchMove={(e) => handleTouchMove(e, containerRef.current)}
-      onTouchEnd={handleTouchEnd}
+      onTouchEnd={(e) => handleTouchEnd(e, containerRef.current)}
     />
   );
 }
