@@ -1,9 +1,10 @@
 "use client";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ViewportState, GraphOptions, PenOptions, Stroke, Point } from "./manim/data";
 import { ToolGraph } from "./manim/tool_graph";
 import { ToolPen } from "./manim/tool_pen";
 import { Canvas } from "./manim/canvas";
+import { Draggable } from "./manim/draggable";
 
 export default function ManimApp() {
   // --- 기존 상태 ---
@@ -20,11 +21,11 @@ export default function ManimApp() {
   const isDrawing = useRef(false);
 
   // --- 판서 드로잉 로직 (SVG 위에서 마우스 이벤트 처리) ---
-  const getMousePos = (e: React.MouseEvent | React.TouchEvent): Point => {
+  const getMousePos = (e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent): Point => {
     if (!svgRef.current) return { x: 0, y: 0 };
     const rect = svgRef.current.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const clientX = (e as any).touches ? (e as any).touches[0].clientX : (e as any).clientX;
+    const clientY = (e as any).touches ? (e as any).touches[0].clientY : (e as any).clientY;
     return { x: clientX - rect.left, y: clientY - rect.top };
   };
 
@@ -35,20 +36,39 @@ export default function ManimApp() {
     setCurrentStroke({ points: [pos], color: penOptions.color, width: penOptions.width });
   };
 
-  const handlePointerMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing.current || !currentStroke || !penOptions.isPenMode) return;
-    const pos = getMousePos(e);
-    setCurrentStroke(prev => prev ? { ...prev, points: [...prev.points, pos] } : null);
-  };
+  // 드로잉 중일 때는 화면 어디서든(툴바 위 포함) 이벤트를 받기 위해 window에 리스너 등록
+  useEffect(() => {
+    const handleGlobalMove = (e: MouseEvent | TouchEvent) => {
+      if (!isDrawing.current || !penOptions.isPenMode) return;
+      const pos = getMousePos(e);
+      setCurrentStroke(prev => prev ? { ...prev, points: [...prev.points, pos] } : null);
+    };
 
-  const handlePointerUp = () => {
-    if (!isDrawing.current || !penOptions.isPenMode) return;
-    isDrawing.current = false;
-    if (currentStroke && currentStroke.points.length > 1) {
-      setStrokes(prev => [...prev, currentStroke]);
-    }
-    setCurrentStroke(null);
-  };
+    const handleGlobalUp = () => {
+      if (!isDrawing.current) return;
+      isDrawing.current = false;
+      
+      // 현재 스트로크를 확정하여 저장
+      setCurrentStroke(prev => {
+        if (prev && prev.points.length > 1) {
+          setStrokes(strokes => [...strokes, prev]);
+        }
+        return null;
+      });
+    };
+
+    window.addEventListener("mousemove", handleGlobalMove);
+    window.addEventListener("mouseup", handleGlobalUp);
+    window.addEventListener("touchmove", handleGlobalMove);
+    window.addEventListener("touchend", handleGlobalUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleGlobalMove);
+      window.removeEventListener("mouseup", handleGlobalUp);
+      window.removeEventListener("touchmove", handleGlobalMove);
+      window.removeEventListener("touchend", handleGlobalUp);
+    };
+  }, [penOptions.isPenMode]);
 
   // --- 툴 액션 ---
   const undoLastStroke = () => setStrokes(prev => prev.slice(0, -1));
@@ -74,25 +94,28 @@ export default function ManimApp() {
       <svg 
         ref={svgRef}
         className={`absolute inset-0 w-full h-full z-10 ${penOptions.isPenMode ? "cursor-crosshair pointer-events-auto" : "pointer-events-none"}`}
-        onMouseDown={handlePointerDown} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
-        onTouchStart={handlePointerDown} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
+        onMouseDown={handlePointerDown}
+        onTouchStart={handlePointerDown}
       >
         {strokes.map((stroke, index) => <g key={index}>{renderPath(stroke)}</g>)}
         {currentStroke && renderPath(currentStroke)}
       </svg>
 
       {/* 3. 상단 UI 배치 영역 */}
-      <div className="absolute top-4 left-4 z-20 flex flex-col gap-4 pointer-events-auto">
+      <Draggable initialPos={{ x: 16, y: 16 }}>
         <ToolGraph 
           viewport={viewport} setViewport={setViewport}
           options={options} setOptions={setOptions}
           onPlay={() => setPlayKey(k => k + 1)}
         />
+      </Draggable>
+
+      <Draggable initialPos={{ x: 16, y: 140 }}>
         <ToolPen 
           penOptions={penOptions} setPenOptions={setPenOptions}
           onUndo={undoLastStroke} onClear={clearAllStrokes}
         />
-      </div>
+      </Draggable>
 
     </div>
   );
