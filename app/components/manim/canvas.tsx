@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ViewportState, GraphOptions } from "./data";
 import { useManimInteraction } from "./interaction";
 import { renderManimScene } from "./render";
