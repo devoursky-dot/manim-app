@@ -16,7 +16,15 @@ export function Canvas({ viewport, setViewport, options, playKey }: ManimCanvasP
   const prevKeyRef = useRef(-1);
 
   // 커스텀 훅 가져오기 (줌/드래그 로직)
-  const { handleWheel, handleMouseDown, handleMouseMove, handleMouseUp } = useManimInteraction(viewport, setViewport);
+  const {
+    handleWheel,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    handleTouchStart,
+    handleTouchMove,
+    handleTouchEnd,
+  } = useManimInteraction(viewport, setViewport);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -56,12 +64,15 @@ export function Canvas({ viewport, setViewport, options, playKey }: ManimCanvasP
   return (
     <div 
       ref={containerRef} 
-      className="w-full h-full cursor-move"
+      className="w-full h-full cursor-move touch-none"
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={(e) => handleMouseMove(e, containerRef.current)}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={(e) => handleTouchMove(e, containerRef.current)}
+      onTouchEnd={handleTouchEnd}
     />
   );
 }
