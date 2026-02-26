@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Scene, Axes, FunctionGraph, Create } from "manim-web";
+import { Scene, Axes, Create } from "manim-web";
 
 export default function ManimCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -10,15 +10,13 @@ export default function ManimCanvas() {
   const [xMax, setXMax] = useState(2 * Math.PI);
   const [yMin, setYMin] = useState(-2);
   const [yMax, setYMax] = useState(2);
-  const [key, setKey] = useState(0); // 리렌더링 트리거용 키
-  
-  // 애니메이션 트리거 감지용 Ref (Play 버튼 클릭 시에만 애니메이션 실행)
-  const prevKeyRef = useRef(-1);
+  const [key, setKey] = useState(0); 
 
-  // 마우스 인터랙션 상태
+  const prevKeyRef = useRef(-1);
   const isDragging = useRef(false);
   const lastMousePos = useRef({ x: 0, y: 0 });
 
+  // 줌 핸들러
   const handleWheel = (e: React.WheelEvent) => {
     const factor = e.deltaY > 0 ? 1.1 : 0.9;
     const xRange = xMax - xMin;
@@ -32,6 +30,7 @@ export default function ManimCanvas() {
     setYMax(yCenter + (yRange * factor) / 2);
   };
 
+  // 드래그 핸들러
   const handleMouseDown = (e: React.MouseEvent) => {
     isDragging.current = true;
     lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -64,73 +63,68 @@ export default function ManimCanvas() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // 애니메이션 실행 여부 결정 (Play 버튼 클릭 시에만 애니메이션)
     const shouldAnimate = prevKeyRef.current !== key;
     prevKeyRef.current = key;
-
     const currentDuration = shouldAnimate ? duration : 0;
 
-    // React의 중복 렌더링 방지를 위해 캔버스 초기화
+    // 캔버스 초기화
     containerRef.current.innerHTML = "";
-
-    let scene: any;
+    let scene: any = null;
 
     const runAnimation = async () => {
       try {
+        if (!containerRef.current) return;
+        
         // 1. 씬 생성
-       // containerRef.current가 존재하는지 먼저 확인합니다.
-      if (containerRef.current) {
         scene = new Scene(containerRef.current);
-      } else {
-        return; // 없으면 아무것도 하지 않고 중단
+
+        // 2. 좌표축 생성
+        const axes = new Axes({
+          xRange: [xMin, xMax, Math.PI / 2],
+          yRange: [yMin, yMax, 1],
+          axisConfig: { color: "#FFFFFF" }
+        });
+
+        // 3. 그래프 생성
+        const sinGraph = (axes as any).plot((x: number) => Math.sin(x), {
+          color: "#00FF00",
+          strokeWidth: strokeWidth,
+        });
+
+        // axes를 먼저 등록하여 좌표계를 확립합니다.
+        scene.add(axes);
+        
+        // 아주 잠깐 대기하여 렌더러가 내부 상태를 갱신할 시간을 줍니다.
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        if (sinGraph && scene) {
+          await scene.play(new Create(sinGraph, { duration: currentDuration }));
+        }
+      } catch (e) {
+        console.error("Manim 렌더링 에러:", e);
       }
+    };
 
-      // 2. 하얀색 좌표축 생성
-      const axes = new Axes({
-        xRange: [xMin, xMax, Math.PI / 2],
-        yRange: [yMin, yMax, 1],
-        axisConfig: { color: "#FFFFFF" }
-      });
+    runAnimation();
 
-      // 3. 초록색 사인(sin) 그래프 생성
-      const sinGraph = axes.plot((x) => Math.sin(x), {
-  color: "#00FF00",
-        xRange: [xMin, xMax, 0.1],
-        strokeWidth: strokeWidth
-      } as any);
-
-      // 좌표축을 먼저 씬에 추가하여 좌표 계산이 올바르게 동작하도록 함
-      scene.add(axes);
-
-      // 4. 애니메이션 재생
-    // Create는 대상(sinGraph)만 지정하고, 재생 옵션은 play의 두 번째 인자로 넘깁니다.
-    await scene.play(new Create(sinGraph), { runTime: currentDuration });
-    } catch (e) {
-      console.error("Manim 렌더링 에러:", e);
-    }
-  };
-
-  runAnimation();
-
-  return () => {
-    if (scene && typeof scene.dispose === 'function') {
-      scene.dispose();
-    }
-  };
-
+    return () => {
+      if (scene) {
+        if (typeof scene.dispose === 'function') scene.dispose();
+      }
+    };
   }, [key, duration, strokeWidth, xMin, xMax, yMin, yMax]);
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full h-full bg-gray-900 p-4">
-      {/* 툴바 */}
-      <div className="flex gap-6 bg-gray-800 p-4 rounded-lg shadow-lg text-white items-center z-10 border border-gray-700">
+    <div className="flex flex-col items-center gap-4 w-full h-screen bg-gray-900 p-4">
+      {/* 툴바 UI */}
+      <div className="flex flex-wrap gap-4 bg-gray-800 p-4 rounded-lg shadow-lg text-white items-center z-10 border border-gray-700">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-400 font-mono">Duration: {duration}s</label>
           <input 
             type="range" 
-            min="0.5" 
+            min="0" 
             max="5" 
-            step="0.5" 
+            step="0.1" 
             value={duration} 
             onChange={(e) => setDuration(parseFloat(e.target.value))}
             className="w-32 accent-blue-500"
@@ -141,14 +135,14 @@ export default function ManimCanvas() {
           <div className="flex gap-2">
             <input 
               type="number" 
-              value={xMin} 
+              value={Number(xMin).toFixed(1)} 
               onChange={(e) => setXMin(parseFloat(e.target.value))}
               className="w-20 px-2 py-1 text-black rounded text-xs"
               step="0.1"
             />
             <input 
               type="number" 
-              value={xMax} 
+              value={Number(xMax).toFixed(1)} 
               onChange={(e) => setXMax(parseFloat(e.target.value))}
               className="w-20 px-2 py-1 text-black rounded text-xs"
               step="0.1"
@@ -175,8 +169,8 @@ export default function ManimCanvas() {
         </button>
       </div>
 
+      {/* 메인 캔버스 영역 */}
       <div className="relative w-full flex-1 bg-black rounded-lg border border-gray-700 shadow-2xl overflow-hidden">
-      {/* 캔버스가 그려질 공간 */}
         <div 
           ref={containerRef} 
           className="w-full h-full cursor-move"
