@@ -103,7 +103,8 @@ export default function ManimCanvas() {
       scene.add(axes);
 
       // 4. 애니메이션 재생
-      await scene.play(new Create(sinGraph, { runTime: currentDuration }));
+    // Create는 대상(sinGraph)만 지정하고, 재생 옵션은 play의 두 번째 인자로 넘깁니다.
+    await scene.play(new Create(sinGraph), { runTime: currentDuration });
     } catch (e) {
       console.error("Manim 렌더링 에러:", e);
     }
