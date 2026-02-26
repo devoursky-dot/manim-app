@@ -7,11 +7,14 @@ interface ToolGraphProps {
   options: GraphOptions;
   setOptions: React.Dispatch<React.SetStateAction<GraphOptions>>;
   onPlay: () => void;
+  orientation?: "horizontal" | "vertical";
 }
 
-export function ToolGraph({ viewport, setViewport, options, setOptions, onPlay }: ToolGraphProps) {
+export function ToolGraph({ viewport, setViewport, options, setOptions, onPlay, orientation }: ToolGraphProps) {
+  const isHorizontal = orientation === "horizontal";
+
   return (
-    <div className="flex flex-wrap gap-4 bg-gray-800 p-4 rounded-lg shadow-lg text-white items-center z-10 border border-gray-700">
+    <div className={`flex ${isHorizontal ? "flex-row items-center" : "flex-col w-48"} gap-4 bg-gray-800 p-4 rounded-lg shadow-lg text-white z-10 border border-gray-700 transition-all duration-300`}>
       <div className="flex flex-col gap-1">
         <label className="text-xs text-gray-400 font-mono">Duration: {options.duration}s</label>
         <input 
