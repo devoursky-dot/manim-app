@@ -20,8 +20,6 @@ const UltimateSmartBoard = () => {
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
   const fileInputRef = useRef(null);
-  const toolbarRef = useRef(null);
-  const dragOffset = useRef({ x: 0, y: 0 });
 
   // 초기 툴바 위치 설정 (화면 상단 중앙)
   React.useEffect(() => {
@@ -163,16 +161,6 @@ const UltimateSmartBoard = () => {
   };
 
   // --- 툴바 드래그 및 스냅 로직 ---
-  const handleToolbarDragStart = (e) => {
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      };
-    }
-  };
-
   const handleToolbarDragEnd = (e) => {
     const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
     const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
@@ -185,42 +173,46 @@ const UltimateSmartBoard = () => {
     const margin = 20; // 화면 끝에서의 여백
     const snapDist = 100; // 자석 효과 감지 거리
 
-    // 툴바의 대략적인 크기 (가로 모드 기준)
-    const tbW = 420; 
-    const tbH = 60;
-
     let nextOrient = toolbarPos.orient;
     let nextX = clientX;
     let nextY = clientY;
 
     // 1. 가장자리 감지 및 방향 결정 (상 -> 하 -> 좌 -> 우 순서)
-    if (clientY < snapDist) { // 상단 스냅
+    if (clientY < snapDist) { // 상단
         nextOrient = 'horizontal';
         nextY = margin;
-        nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin));
-    } else if (clientY > ih - snapDist) { // 하단 스냅
+        nextX = Math.max(margin, Math.min(clientX - 200, iw - 450)); // 중앙 정렬 보정
+    } else if (clientY > ih - snapDist) { // 하단
         nextOrient = 'horizontal';
-        nextY = ih - tbH - margin; 
-        nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin));
-    } else if (clientX < snapDist) { // 좌측 스냅
+        nextY = ih - 80; 
+        nextX = Math.max(margin, Math.min(clientX - 200, iw - 450));
+    } else if (clientX < snapDist) { // 좌측
         nextOrient = 'vertical';
         nextX = margin;
-        nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin));
-    } else if (clientX > iw - snapDist) { // 우측 스냅
+        nextY = Math.max(margin, Math.min(clientY - 200, ih - 450));
+    } else if (clientX > iw - snapDist) { // 우측
         nextOrient = 'vertical';
-        nextX = iw - tbH - margin;
-        nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin));
+        nextX = iw - 80;
+        nextY = Math.max(margin, Math.min(clientY - 200, ih - 450));
     } else {
-        // 허공에 놓았을 때: 드래그 오프셋을 적용하여 자연스럽게 위치 이동
-        nextX = clientX - dragOffset.current.x;
-        nextY = clientY - dragOffset.current.y;
-        
-        // 현재 방향에 맞춰 화면 밖으로 나가지 않도록 클램핑
-        const currentW = nextOrient === 'horizontal' ? tbW : tbH;
-        const currentH = nextOrient === 'horizontal' ? tbH : tbW;
-        
-        nextX = Math.max(margin, Math.min(nextX, iw - currentW - margin));
-        nextY = Math.max(margin, Math.min(nextY, ih - currentH - margin));
+        // 허공에 놓았을 때: 현재 방향 유지하고 위치만 업데이트
+        // 드래그 시 마우스가 툴바의 중앙을 잡았다고 가정하고 좌표 보정
+        if (nextOrient === 'horizontal') {
+            nextX -= 200; 
+            nextY -= 30;
+        } else {
+            nextX -= 30;
+            nextY -= 200;
+        }
+    }
+    
+    // 2. 화면 밖으로 나가지 않도록 최종 클램핑
+    if (nextOrient === 'horizontal') {
+        nextX = Math.max(margin, Math.min(nextX, iw - 450));
+        nextY = Math.max(margin, Math.min(nextY, ih - 80));
+    } else {
+        nextX = Math.max(margin, Math.min(nextX, iw - 80));
+        nextY = Math.max(margin, Math.min(nextY, ih - 450));
     }
 
     setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
@@ -242,9 +234,7 @@ const UltimateSmartBoard = () => {
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222', overflow: 'hidden' }}>
       {/* 플로팅 툴바 */}
       <div 
-        ref={toolbarRef}
         draggable
-        onDragStart={handleToolbarDragStart}
         onDragEnd={handleToolbarDragEnd}
         style={{
           position: 'fixed',
