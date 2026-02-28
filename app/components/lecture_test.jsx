@@ -32,10 +32,9 @@ const UltimateSmartBoard = () => {
 
   // --- PDF 렌더링 및 크롭 처리 ---
   const onRenderSuccess = useCallback(async (page) => {
-    // 1. 고해상도 렌더링을 위한 설정 (구형 기기 최적화)
-    // 메모리 부족 방지를 위해 DPR을 최대 2로 제한하고 스케일을 조정합니다.
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const viewport = page.getViewport({ scale: 1.5 * dpr }); 
+    // 1. 고해상도 렌더링을 위한 설정
+    const dpr = window.devicePixelRatio || 1;
+    const viewport = page.getViewport({ scale: 2 * dpr }); 
     
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
@@ -226,14 +225,13 @@ const UltimateSmartBoard = () => {
           draggable={tool === 'hand'}
           ref={stageRef}
         >
-          <Layer listening={false}>
+          <Layer>
             <Rect 
               width={window.innerWidth * 10} 
               height={window.innerHeight * 10} 
               x={-window.innerWidth * 5} 
               y={-window.innerHeight * 5} 
               fill={bgColor} 
-              perfectDrawEnabled={false}
             />
             
             {pdfImage && (
@@ -242,12 +240,13 @@ const UltimateSmartBoard = () => {
                 x={0} y={0}
                 width={window.innerWidth}
                 height={(window.innerWidth * pdfImage.height) / pdfImage.width}
-                perfectDrawEnabled={false}
+                shadowBlur={10}
+                shadowColor="rgba(0,0,0,0.1)"
               />
             )}
           </Layer>
 
-          <Layer listening={false}>
+          <Layer>
             {lines.map((line, i) => {
               if (line.tool === 'rect') {
                 return (
@@ -258,7 +257,6 @@ const UltimateSmartBoard = () => {
                     width={line.width}
                     height={line.height}
                     fill={line.fill}
-                    perfectDrawEnabled={false}
                   />
                 );
               }
@@ -272,7 +270,6 @@ const UltimateSmartBoard = () => {
                   lineCap="round"
                   lineJoin="round"
                   globalCompositeOperation={line.color === 'white' ? 'destination-out' : 'source-over'}
-                  perfectDrawEnabled={false}
                 />
               );
             })}
