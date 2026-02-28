@@ -37,6 +37,8 @@ const UltimateSmartBoard = () => {
   const sliderRef = useRef(null);
   const penBtnRefs = useRef([]);
   const penSettingsRef = useRef(null);
+  const lastDist = useRef(0);
+  const lastCenter = useRef(null);
 
   const activePen = pens[activePenId];
   const updateActivePen = (updates) => {
@@ -380,30 +382,24 @@ const UltimateSmartBoard = () => {
     };
   };
 
-  // --- 툴바 드래그 및 스냅 로직 ---
-  const handleToolbarDragStart = (e) => {
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      };
-    }
+  // 핀치 줌 헬퍼 함수
+  const getDistance = (p1, p2) => {
+    return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
   };
 
-  const handleToolbarDragEnd = (e) => {
-    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
-    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
-    
-    // 유효하지 않은 좌표 무시
-    if (!clientX || !clientY) return;
+  const getCenter = (p1, p2) => {
+    return {
+      x: (p1.x + p2.x) / 2,
+      y: (p1.y + p2.y) / 2,
+    };
+  };
 
+  // --- 툴바 드래그 및 스냅 로직 ---
+  const snapToolbar = (clientX, clientY) => {
     const iw = window.innerWidth;
     const ih = window.innerHeight;
-    const margin = 20; // 화면 끝에서의 여백
-    const snapDist = 100; // 자석 효과 감지 거리
-
-    // [수정] 툴바의 실제 크기를 동적으로 계산 (줄바꿈 등으로 크기가 변할 수 있음)
+    const margin = 20;
+    const snapDist = 100;
     const rect = toolbarRef.current ? toolbarRef.current.getBoundingClientRect() : { width: 420, height: 60 };
     const tbW = rect.width;
     const tbH = rect.height;
@@ -412,7 +408,6 @@ const UltimateSmartBoard = () => {
     let nextX = clientX;
     let nextY = clientY;
 
-    // 1. 가장자리 감지 및 방향 결정 (상 -> 하 -> 좌 -> 우 순서)
     if (clientY < snapDist) { // 상단 스냅
         nextOrient = 'horizontal';
         nextY = margin;
@@ -430,20 +425,115 @@ const UltimateSmartBoard = () => {
         nextX = iw - tbH - margin;
         nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin));
     } else {
-        // 허공에 놓았을 때: 드래그 오프셋을 적용하여 자연스럽게 위치 이동
         nextX = clientX - dragOffset.current.x;
         nextY = clientY - dragOffset.current.y;
-        
-        // 현재 방향에 맞춰 화면 밖으로 나가지 않도록 클램핑
-        // 툴바의 머리부분(핸들)만 화면 안에 있으면 되도록 제한 완화
-        const headSize = 40; // 핸들 크기 대략 40px
-        
-        // 전체 크기(currentW/H) 대신 headSize를 사용하여 몸통은 화면 밖으로 나갈 수 있게 함
+        const headSize = 40;
         nextX = Math.max(margin, Math.min(nextX, iw - margin - headSize));
         nextY = Math.max(margin, Math.min(nextY, ih - margin - headSize));
     }
-
     setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
+  };
+
+  const handleToolbarDragStart = (e) => {
+    if (toolbarRef.current) {
+      const rect = toolbarRef.current.getBoundingClientRect();
+      dragOffset.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+  };
+
+  const handleToolbarDragEnd = (e) => {
+    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
+    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
+    
+    // 유효하지 않은 좌표 무시
+    if (!clientX || !clientY) return;
+    snapToolbar(clientX, clientY);
+  };
+
+  // 툴바 터치 이벤트 핸들러
+  const handleToolbarTouchStart = (e) => {
+    const touch = e.touches[0];
+    if (toolbarRef.current) {
+      const rect = toolbarRef.current.getBoundingClientRect();
+      dragOffset.current = {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+    }
+  };
+
+  const handleToolbarTouchMove = (e) => {
+    e.preventDefault(); // 스크롤 방지
+    const touch = e.touches[0];
+    setToolbarPos(prev => ({
+        ...prev,
+        x: touch.clientX - dragOffset.current.x,
+        y: touch.clientY - dragOffset.current.y
+    }));
+  };
+
+  const handleToolbarTouchEnd = (e) => {
+    const touch = e.changedTouches[0];
+    snapToolbar(touch.clientX, touch.clientY);
+  };
+
+  // Stage 터치 이벤트 핸들러 (핀치 줌 포함)
+  const handleTouchStart = (e) => {
+    if (e.evt.touches.length === 1) {
+      handleMouseDown(e);
+    } else if (e.evt.touches.length === 2) {
+      isDrawing.current = false; // 그리기 중단
+      const p1 = { x: e.evt.touches[0].clientX, y: e.evt.touches[0].clientY };
+      const p2 = { x: e.evt.touches[1].clientX, y: e.evt.touches[1].clientY };
+      lastDist.current = getDistance(p1, p2);
+      lastCenter.current = getCenter(p1, p2);
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.evt.touches.length === 1) {
+      handleMouseMove(e);
+    } else if (e.evt.touches.length === 2) {
+      e.evt.preventDefault(); // 브라우저 줌 방지
+      const p1 = { x: e.evt.touches[0].clientX, y: e.evt.touches[0].clientY };
+      const p2 = { x: e.evt.touches[1].clientX, y: e.evt.touches[1].clientY };
+      
+      if (!lastCenter.current) return;
+
+      const newDist = getDistance(p1, p2);
+      const newCenter = getCenter(p1, p2);
+      const distRatio = newDist / lastDist.current;
+
+      const stage = stageRef.current;
+      const oldScale = stage.scaleX();
+      let newScale = oldScale * distRatio;
+      newScale = Math.max(0.2, Math.min(newScale, 5));
+
+      const mousePointTo = {
+        x: (lastCenter.current.x - stage.x()) / oldScale,
+        y: (lastCenter.current.y - stage.y()) / oldScale,
+      };
+
+      const newPos = {
+        x: newCenter.x - mousePointTo.x * newScale,
+        y: newCenter.y - mousePointTo.y * newScale,
+      };
+
+      setStageScale(newScale);
+      setStagePos(newPos);
+
+      lastDist.current = newDist;
+      lastCenter.current = newCenter;
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    lastDist.current = 0;
+    lastCenter.current = null;
+    handleMouseUp(e);
   };
 
   // 마스킹 여부 확인 및 토글 함수
@@ -466,6 +556,9 @@ const UltimateSmartBoard = () => {
         draggable
         onDragStart={handleToolbarDragStart}
         onDragEnd={handleToolbarDragEnd}
+        onTouchStart={handleToolbarTouchStart}
+        onTouchMove={handleToolbarTouchMove}
+        onTouchEnd={handleToolbarTouchEnd}
         style={{
           position: 'fixed',
           left: toolbarPos.x,
@@ -661,9 +754,9 @@ const UltimateSmartBoard = () => {
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          onTouchStart={handleMouseDown}
-          onTouchMove={handleMouseMove}
-          onTouchEnd={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           onWheel={handleWheel}
           draggable={tool === 'hand'}
           onDragEnd={(e) => setStagePos({ x: e.target.x(), y: e.target.y() })}
