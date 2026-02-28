@@ -14,6 +14,308 @@ const getRelativePointerPosition = (stage) => {
   return transform.point(pos);
 };
 
+// 색상 팔레트 (컴포넌트 외부로 이동)
+const colorPalette = [
+  '#000000', '#333333', '#666666', '#999999', '#FFFFFF',
+  '#FF0000', '#FFA500', '#FFFF00', '#008000', '#0000FF',
+  '#4B0082', '#800080', '#FFC0CB', '#A52A2A', '#00FFFF',
+  '#008080', '#000080', '#808000', '#800000', '#FF00FF'
+];
+
+// --- [분리된 툴바 컴포넌트] ---
+const FloatingToolbar = React.memo(({ 
+  tool, setTool, 
+  pens, activePenId, setActivePenId, updateActivePen, 
+  stageScale, onZoomChange, onResetZoom,
+  isFullScreen, toggleFullScreen,
+  hasMask, handleCropTool,
+  onFileChange 
+}) => {
+  const [toolbarPos, setToolbarPos] = useState({ x: window.innerWidth / 2 - 220, y: window.innerHeight - 100, orient: 'horizontal' });
+  const [showPenSettings, setShowPenSettings] = useState(false);
+  const [penSettingsPos, setPenSettingsPos] = useState({ top: 0, left: 0 });
+  const [showZoomSlider, setShowZoomSlider] = useState(false);
+  const [sliderPos, setSliderPos] = useState({ top: 0, left: 0 });
+
+  const toolbarRef = useRef(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const isDraggingToolbar = useRef(false);
+  const fileInputRef = useRef(null);
+  const zoomControlRef = useRef(null);
+  const sliderRef = useRef(null);
+  const penBtnRefs = useRef([]);
+  const penSettingsRef = useRef(null);
+
+  const activePen = pens[activePenId];
+
+  // 이벤트 전파 중단 헬퍼
+  const stopPropagation = (e) => e.stopPropagation();
+
+  // 줌 슬라이더 위치 계산
+  React.useEffect(() => {
+    if (showZoomSlider && zoomControlRef.current) {
+      const rect = zoomControlRef.current.getBoundingClientRect();
+      if (toolbarPos.orient === 'horizontal') {
+        setSliderPos({ top: rect.bottom + 10, left: rect.left + rect.width / 2 - 70 });
+      } else {
+        setSliderPos({ top: rect.top + rect.height / 2 - 20, left: rect.right + 10 });
+      }
+    }
+  }, [showZoomSlider, toolbarPos]);
+
+  // 펜 설정 메뉴 위치 계산
+  React.useEffect(() => {
+    const activeBtnRef = penBtnRefs.current[activePenId];
+    if (showPenSettings && activeBtnRef) {
+      const rect = activeBtnRef.getBoundingClientRect();
+      if (toolbarPos.orient === 'horizontal') {
+        setPenSettingsPos({ top: rect.bottom + 10, left: rect.left + rect.width / 2 - 110 });
+      } else {
+        setPenSettingsPos({ top: rect.top + rect.height / 2 - 60, left: rect.right + 10 });
+      }
+    }
+  }, [showPenSettings, toolbarPos, activePenId]);
+
+  // 외부 클릭 시 팝업 닫기
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showZoomSlider && zoomControlRef.current && !zoomControlRef.current.contains(event.target) && sliderRef.current && !sliderRef.current.contains(event.target)) {
+        setShowZoomSlider(false);
+      }
+      const activeBtnRef = penBtnRefs.current[activePenId];
+      if (showPenSettings && activeBtnRef && !activeBtnRef.contains(event.target) && 
+          penSettingsRef.current && !penSettingsRef.current.contains(event.target) &&
+          !penBtnRefs.current.some(ref => ref && ref.contains(event.target))) {
+        setShowPenSettings(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showZoomSlider, showPenSettings, activePenId]);
+
+  // 툴바 스냅 로직
+  const snapToolbar = (clientX, clientY) => {
+    const iw = window.innerWidth;
+    const ih = window.innerHeight;
+    const margin = 20;
+    const snapDist = 100;
+    const rect = toolbarRef.current ? toolbarRef.current.getBoundingClientRect() : { width: 420, height: 60 };
+    const tbW = rect.width;
+    const tbH = rect.height;
+
+    let nextOrient = toolbarPos.orient;
+    let nextX = clientX;
+    let nextY = clientY;
+
+    if (clientY < snapDist) { nextOrient = 'horizontal'; nextY = margin; nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin)); }
+    else if (clientY > ih - snapDist) { nextOrient = 'horizontal'; nextY = ih - tbH - margin; nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin)); }
+    else if (clientX < snapDist) { nextOrient = 'vertical'; nextX = margin; nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin)); }
+    else if (clientX > iw - snapDist) { nextOrient = 'vertical'; nextX = iw - tbH - margin; nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin)); }
+    else {
+        nextX = clientX - dragOffset.current.x;
+        nextY = clientY - dragOffset.current.y;
+        const headSize = 40;
+        nextX = Math.max(margin, Math.min(nextX, iw - margin - headSize));
+        nextY = Math.max(margin, Math.min(nextY, ih - margin - headSize));
+    }
+    setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
+  };
+
+  const handleToolbarDragStart = (e) => {
+    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
+    if (toolbarRef.current) {
+      const rect = toolbarRef.current.getBoundingClientRect();
+      dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+  };
+
+  const handleToolbarDragEnd = (e) => {
+    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
+    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
+    if (!clientX || !clientY) return;
+    snapToolbar(clientX, clientY);
+  };
+
+  const handleToolbarTouchStart = (e) => {
+    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
+    isDraggingToolbar.current = true;
+    const touch = e.touches[0];
+    if (toolbarRef.current) {
+      const rect = toolbarRef.current.getBoundingClientRect();
+      dragOffset.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
+  };
+
+  const handleToolbarTouchMove = (e) => {
+    if (!isDraggingToolbar.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    setToolbarPos(prev => ({ ...prev, x: touch.clientX - dragOffset.current.x, y: touch.clientY - dragOffset.current.y }));
+  };
+
+  const handleToolbarTouchEnd = (e) => {
+    if (!isDraggingToolbar.current) return;
+    isDraggingToolbar.current = false;
+    const touch = e.changedTouches[0];
+    snapToolbar(touch.clientX, touch.clientY);
+  };
+
+  return (
+    <div 
+      ref={toolbarRef}
+      draggable
+      onDragStart={handleToolbarDragStart}
+      onDragEnd={handleToolbarDragEnd}
+      onTouchStart={handleToolbarTouchStart}
+      onTouchMove={handleToolbarTouchMove}
+      onTouchEnd={handleToolbarTouchEnd}
+      style={{
+        position: 'fixed',
+        left: toolbarPos.x,
+        top: toolbarPos.y,
+        display: 'flex',
+        flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column',
+        flexWrap: 'wrap',
+        maxWidth: '94vw',
+        maxHeight: '90vh',
+        overflow: 'auto',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '10px',
+        background: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderRadius: '16px',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+        zIndex: 1000,
+        transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
+        cursor: 'move'
+      }}
+    >
+      <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', cursor: 'grab' }}>
+          <Grip size={20} style={{ transform: toolbarPos.orient === 'horizontal' ? 'rotate(90deg)' : 'none' }} />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button onClick={() => fileInputRef.current.click()} style={btnStyle} title="PDF 불러오기"><FileUp size={20}/></button>
+        <input type="file" ref={fileInputRef} onChange={onFileChange} accept="application/pdf" hidden />
+        
+        <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
+        
+        <button onClick={() => setTool('hand')} style={tool === 'hand' ? activeBtn : btnStyle}><Hand size={20}/></button>
+        
+        {pens.map((pen, index) => (
+          <div key={index} style={{ position: 'relative' }}>
+            <button 
+              ref={el => penBtnRefs.current[index] = el}
+              onClick={() => {
+                if (tool === 'pen' && activePenId === index) {
+                  setShowPenSettings(!showPenSettings);
+                } else {
+                  setTool('pen');
+                  setActivePenId(index);
+                  setShowPenSettings(false); 
+                }
+              }} 
+              style={(tool === 'pen' && activePenId === index) ? activeBtn : btnStyle}
+              title={`펜 ${index + 1} (클릭하여 설정)`}
+            >
+              {pen.type === 'highlighter' ? <Highlighter size={20}/> : pen.type === 'pressure' ? <PenTool size={20}/> : <Pencil size={20}/>}
+              <div style={{ position: 'absolute', bottom: 4, right: 4, width: 6, height: 6, borderRadius: '50%', backgroundColor: pen.color, border: '1px solid rgba(0,0,0,0.1)' }}/>
+            </button>
+          </div>
+        ))}
+
+        <div style={{ position: 'relative' }}>
+          {showPenSettings && createPortal(
+            <div ref={penSettingsRef} 
+              onMouseDown={stopPropagation}
+              onTouchStart={stopPropagation}
+              onMouseMove={stopPropagation}
+              onTouchMove={stopPropagation}
+              style={{
+              position: 'fixed',
+              top: penSettingsPos.top,
+              left: penSettingsPos.left,
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              padding: '12px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              zIndex: 9999,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px',
+              minWidth: '220px'
+            }}>
+              <div style={{ display: 'flex', gap: '5px', justifyContent: 'space-between' }}>
+                <button onClick={() => updateActivePen({ type: 'basic', width: 3 })} style={activePen.type === 'basic' ? activeBtn : btnStyle} title="기본펜"><Pencil size={18}/></button>
+                <button onClick={() => updateActivePen({ type: 'pressure', width: 3 })} style={activePen.type === 'pressure' ? activeBtn : btnStyle} title="필압펜"><PenTool size={18}/></button>
+                <button onClick={() => updateActivePen({ type: 'highlighter', width: 20 })} style={activePen.type === 'highlighter' ? activeBtn : btnStyle} title="형광펜"><Highlighter size={18}/></button>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '12px', color: '#666', whiteSpace: 'nowrap' }}>두께: {activePen.width}</span>
+                <input type="range" min="1" max="50" value={activePen.width} onChange={(e) => updateActivePen({ width: parseInt(e.target.value) })} style={{ width: '100%', accentColor: '#6366f1' }} />
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                {colorPalette.map(c => (
+                  <div key={c} onClick={() => updateActivePen({ color: c })} 
+                    style={{ width: '24px', height: '24px', borderRadius: '50%', background: c, border: activePen.color === c ? '2px solid #6366f1' : '1px solid #ddd', cursor: 'pointer', transform: activePen.color === c ? 'scale(1.1)' : 'none', transition: 'transform 0.2s' }} 
+                  />
+                ))}
+              </div>
+            </div>,
+            document.body
+          )}
+        </div>
+
+        <button onClick={() => setTool('eraser')} style={tool === 'eraser' ? activeBtn : btnStyle}><Eraser size={20}/></button>
+        <button onClick={handleCropTool} style={(tool === 'crop' || hasMask) ? activeBtn : btnStyle} title={hasMask ? "마스킹 해제" : "영역 잘라내기"}><Crop size={20}/></button>
+      </div>
+      
+      <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
+
+      <div ref={zoomControlRef} style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center', position: 'relative' }}>
+        <span onClick={() => setShowZoomSlider(!showZoomSlider)} style={{ fontSize: '13px', color: '#666', fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }} title="클릭하여 확대/축소">
+          {Math.round(stageScale * 100)}%
+        </span>
+
+        {showZoomSlider && createPortal(
+          <div ref={sliderRef} 
+            onMouseDown={stopPropagation}
+            onTouchStart={stopPropagation}
+            onMouseMove={stopPropagation}
+            onTouchMove={stopPropagation}
+            style={{
+            touchAction: 'none',
+            position: 'fixed',
+            top: sliderPos.top,
+            left: sliderPos.left,
+            background: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            padding: '8px 12px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            minWidth: '140px'
+          }}>
+            <input type="range" min="0.2" max="5" step="0.1" value={stageScale} onChange={(e) => onZoomChange(parseFloat(e.target.value))} style={{ width: '100%', cursor: 'pointer', accentColor: '#6366f1' }} />
+          </div>,
+          document.body
+        )}
+
+        <button onClick={onResetZoom} style={btnStyle}><RotateCcw size={18}/></button>
+        <button onClick={toggleFullScreen} style={btnStyle} title={isFullScreen ? "전체화면 종료" : "전체화면"}>
+          {isFullScreen ? <Minimize size={18}/> : <Maximize size={18}/>}
+        </button>
+      </div>
+    </div>
+  );
+});
+
 const UltimateSmartBoard = () => {
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfImage, setPdfImage] = useState(null);
@@ -24,39 +326,21 @@ const UltimateSmartBoard = () => {
     { type: 'basic', color: '#FF0000', width: 3 }
   ]);
   const [activePenId, setActivePenId] = useState(0);
-  const [showPenSettings, setShowPenSettings] = useState(false);
-  const [penSettingsPos, setPenSettingsPos] = useState({ top: 0, left: 0 });
   const [stageScale, setStageScale] = useState(1);
   const [stagePos, setStagePos] = useState({ x: 0, y: 0 }); // 캔버스 위치
-  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0, orient: 'horizontal' }); // 툴바 위치 및 방향
   const [bgColor, setBgColor] = useState('#ffffff');
   const [currentCrop, setCurrentCrop] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [showZoomSlider, setShowZoomSlider] = useState(false);
-  const [sliderPos, setSliderPos] = useState({ top: 0, left: 0 });
   
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
-  const fileInputRef = useRef(null);
-  const toolbarRef = useRef(null);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const zoomControlRef = useRef(null);
-  const sliderRef = useRef(null);
-  const penBtnRefs = useRef([]);
-  const penSettingsRef = useRef(null);
   const lastDist = useRef(0);
   const lastCenter = useRef(null);
-  const isDraggingToolbar = useRef(false); // 툴바 드래그 상태 추적
 
   const activePen = pens[activePenId];
   const updateActivePen = (updates) => {
     setPens(prev => prev.map((p, i) => i === activePenId ? { ...p, ...updates } : p));
   };
-
-  // 초기 툴바 위치 설정 (화면 상단 중앙)
-  React.useEffect(() => {
-    setToolbarPos({ x: window.innerWidth / 2 - 220, y: window.innerHeight - 100, orient: 'horizontal' });
-  }, []);
 
   // 전체화면 변경 감지
   React.useEffect(() => {
@@ -74,62 +358,6 @@ const UltimateSmartBoard = () => {
       }
     }
   };
-
-  // 줌 슬라이더 위치 계산
-  React.useEffect(() => {
-    if (showZoomSlider && zoomControlRef.current) {
-      const rect = zoomControlRef.current.getBoundingClientRect();
-      if (toolbarPos.orient === 'horizontal') {
-        setSliderPos({
-          top: rect.bottom + 10,
-          left: rect.left + rect.width / 2 - 70 // minWidth 140 / 2
-        });
-      } else {
-        setSliderPos({
-          top: rect.top + rect.height / 2 - 20,
-          left: rect.right + 10
-        });
-      }
-    }
-  }, [showZoomSlider, toolbarPos]);
-
-  // 펜 설정 메뉴 위치 계산
-  React.useEffect(() => {
-    const activeBtnRef = penBtnRefs.current[activePenId];
-    if (showPenSettings && activeBtnRef) {
-      const rect = activeBtnRef.getBoundingClientRect();
-      if (toolbarPos.orient === 'horizontal') {
-        setPenSettingsPos({
-          top: rect.bottom + 10,
-          left: rect.left + rect.width / 2 - 110 // minWidth 220 / 2
-        });
-      } else {
-        setPenSettingsPos({
-          top: rect.top + rect.height / 2 - 60,
-          left: rect.right + 10
-        });
-      }
-    }
-  }, [showPenSettings, toolbarPos, activePenId]);
-
-  // 외부 클릭 시 팝업 닫기 (줌 슬라이더 & 펜 설정)
-  React.useEffect(() => {
-    const handleClickOutside = (event) => {
-      // 줌 슬라이더 닫기
-      if (showZoomSlider && zoomControlRef.current && !zoomControlRef.current.contains(event.target) && sliderRef.current && !sliderRef.current.contains(event.target)) {
-        setShowZoomSlider(false);
-      }
-      // 펜 설정 닫기
-      const activeBtnRef = penBtnRefs.current[activePenId];
-      if (showPenSettings && activeBtnRef && !activeBtnRef.contains(event.target) && 
-          penSettingsRef.current && !penSettingsRef.current.contains(event.target) &&
-          !penBtnRefs.current.some(ref => ref && ref.contains(event.target))) {
-        setShowPenSettings(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showZoomSlider, showPenSettings]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -190,24 +418,6 @@ const UltimateSmartBoard = () => {
     const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
     return yiq < 128;
   };
-
-  // // 펜 종류나 배경색 변경 시 기본 색상 자동 설정 (삭제 또는 수정)
-  // React.useEffect(() => {
-  //   const isDark = isDarkBackground(bgColor);
-  //   if (penType === 'highlighter') {
-  //     setPenColor('#ffff00'); // 형광펜 기본 노랑
-  //   } else {
-  //     setPenColor(isDark ? '#ffffff' : '#000000'); // 기본/필압펜은 배경 대비 색상
-  //   }
-  // }, [penType, bgColor]);
-
-  // 20가지 색상 팔레트
-  const colorPalette = [
-    '#000000', '#333333', '#666666', '#999999', '#FFFFFF',
-    '#FF0000', '#FFA500', '#FFFF00', '#008000', '#0000FF',
-    '#4B0082', '#800080', '#FFC0CB', '#A52A2A', '#00FFFF',
-    '#008080', '#000080', '#808000', '#800000', '#FF00FF'
-  ];
 
   const handleMouseDown = useCallback((e) => {
     const stage = e.target.getStage();
@@ -316,8 +526,7 @@ const UltimateSmartBoard = () => {
   }, []);
 
   // 줌 슬라이더 변경 핸들러 (화면 중앙 기준)
-  const handleZoomSliderChange = (e) => {
-    const newScale = parseFloat(e.target.value);
+  const handleZoomChange = useCallback((newScale) => {
     const stage = stageRef.current;
     
     if (stage) {
@@ -340,7 +549,7 @@ const UltimateSmartBoard = () => {
     } else {
       setStageScale(newScale);
     }
-  };
+  }, []);
 
   // 필압펜(속도 기반 가변 두께) 렌더링을 위한 Shape 생성 함수
   const getPressureStrokeShape = (line) => {
@@ -396,105 +605,6 @@ const UltimateSmartBoard = () => {
       x: (p1.x + p2.x) / 2,
       y: (p1.y + p2.y) / 2,
     };
-  };
-
-  // 이벤트 전파 중단 헬퍼 함수 (팝업 내 터치 시 툴바 이동 방지)
-  const stopPropagation = (e) => {
-    e.stopPropagation();
-  };
-
-  // --- 툴바 드래그 및 스냅 로직 ---
-  const snapToolbar = (clientX, clientY) => {
-    const iw = window.innerWidth;
-    const ih = window.innerHeight;
-    const margin = 20;
-    const snapDist = 100;
-    const rect = toolbarRef.current ? toolbarRef.current.getBoundingClientRect() : { width: 420, height: 60 };
-    const tbW = rect.width;
-    const tbH = rect.height;
-
-    let nextOrient = toolbarPos.orient;
-    let nextX = clientX;
-    let nextY = clientY;
-
-    if (clientY < snapDist) { // 상단 스냅
-        nextOrient = 'horizontal';
-        nextY = margin;
-        nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin));
-    } else if (clientY > ih - snapDist) { // 하단 스냅
-        nextOrient = 'horizontal';
-        nextY = ih - tbH - margin; 
-        nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin));
-    } else if (clientX < snapDist) { // 좌측 스냅
-        nextOrient = 'vertical';
-        nextX = margin;
-        nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin));
-    } else if (clientX > iw - snapDist) { // 우측 스냅
-        nextOrient = 'vertical';
-        nextX = iw - tbH - margin;
-        nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin));
-    } else {
-        nextX = clientX - dragOffset.current.x;
-        nextY = clientY - dragOffset.current.y;
-        const headSize = 40;
-        nextX = Math.max(margin, Math.min(nextX, iw - margin - headSize));
-        nextY = Math.max(margin, Math.min(nextY, ih - margin - headSize));
-    }
-    setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
-  };
-
-  const handleToolbarDragStart = (e) => {
-    // 툴바 내부 요소(슬라이더 등 Portal)에서 발생한 이벤트는 무시
-    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      };
-    }
-  };
-
-  const handleToolbarDragEnd = (e) => {
-    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
-    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
-    
-    // 유효하지 않은 좌표 무시
-    if (!clientX || !clientY) return;
-    snapToolbar(clientX, clientY);
-  };
-
-  // 툴바 터치 이벤트 핸들러
-  const handleToolbarTouchStart = (e) => {
-    // 툴바 내부 요소(슬라이더 등 Portal)에서 발생한 이벤트는 무시
-    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
-    isDraggingToolbar.current = true; // 드래그 시작 플래그 설정
-    const touch = e.touches[0];
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top
-      };
-    }
-  };
-
-  const handleToolbarTouchMove = (e) => {
-    if (!isDraggingToolbar.current) return; // 드래그 중이 아니면 무시
-    e.preventDefault(); // 스크롤 방지
-    const touch = e.touches[0];
-    setToolbarPos(prev => ({
-        ...prev,
-        x: touch.clientX - dragOffset.current.x,
-        y: touch.clientY - dragOffset.current.y
-    }));
-  };
-
-  const handleToolbarTouchEnd = (e) => {
-    if (!isDraggingToolbar.current) return;
-    isDraggingToolbar.current = false; // 드래그 종료
-    const touch = e.changedTouches[0];
-    snapToolbar(touch.clientX, touch.clientY);
   };
 
   // Stage 터치 이벤트 핸들러 (핀치 줌 포함)
@@ -682,194 +792,14 @@ const UltimateSmartBoard = () => {
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222', overflow: 'hidden' }}>
       {/* 플로팅 툴바 */}
-      <div 
-        ref={toolbarRef}
-        draggable
-        onDragStart={handleToolbarDragStart}
-        onDragEnd={handleToolbarDragEnd}
-        onTouchStart={handleToolbarTouchStart}
-        onTouchMove={handleToolbarTouchMove}
-        onTouchEnd={handleToolbarTouchEnd}
-        style={{
-          position: 'fixed',
-          left: toolbarPos.x,
-          top: toolbarPos.y,
-          display: 'flex',
-          flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column',
-          flexWrap: 'wrap', // [추가] 공간 부족 시 줄바꿈 허용
-          maxWidth: '94vw', // [추가] 화면 너비를 넘지 않도록 제한
-          maxHeight: '90vh', // [추가] 화면 높이를 넘지 않도록 제한
-          overflow: 'auto', // [추가] 필요 시 스크롤 생성
-          justifyContent: 'center', // [추가] 중앙 정렬
-          alignItems: 'center',
-          gap: '8px',
-          padding: '10px',
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(10px)',
-          borderRadius: '16px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          zIndex: 1000,
-          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)', // 부드러운 이동 애니메이션
-          cursor: 'move'
-        }}
-      >
-        {/* 드래그 핸들 */}
-        <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', cursor: 'grab' }}>
-            <Grip size={20} style={{ transform: toolbarPos.orient === 'horizontal' ? 'rotate(90deg)' : 'none' }} />
-        </div>
-
-        {/* 도구 모음 */}
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', 
-          gap: '8px',
-          flexWrap: 'wrap', // [추가] 내부 버튼들도 줄바꿈 허용
-          justifyContent: 'center'
-        }}>
-          <button onClick={() => fileInputRef.current.click()} style={btnStyle} title="PDF 불러오기"><FileUp size={20}/></button>
-          <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="application/pdf" hidden />
-          
-          <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
-          
-          <button onClick={() => setTool('hand')} style={tool === 'hand' ? activeBtn : btnStyle}><Hand size={20}/></button>
-          
-          {/* 펜 툴 버튼들 */}
-          {pens.map((pen, index) => (
-            <div key={index} style={{ position: 'relative' }}>
-              <button 
-                ref={el => penBtnRefs.current[index] = el}
-                onClick={() => {
-                  if (tool === 'pen' && activePenId === index) {
-                    setShowPenSettings(!showPenSettings);
-                  } else {
-                    setTool('pen');
-                    setActivePenId(index);
-                    setShowPenSettings(false); 
-                  }
-                }} 
-                style={(tool === 'pen' && activePenId === index) ? activeBtn : btnStyle}
-                title={`펜 ${index + 1} (클릭하여 설정)`}
-              >
-                {pen.type === 'highlighter' ? <Highlighter size={20}/> : pen.type === 'pressure' ? <PenTool size={20}/> : <Pencil size={20}/>}
-                <div style={{
-                  position: 'absolute', bottom: 4, right: 4, width: 6, height: 6, borderRadius: '50%', 
-                  backgroundColor: pen.color, border: '1px solid rgba(0,0,0,0.1)'
-                }}/>
-              </button>
-            </div>
-          ))}
-
-          {/* 펜 설정 팝업 (Portal 사용) */}
-          <div style={{ position: 'relative' }}>
-            {showPenSettings && createPortal(
-              <div ref={penSettingsRef} 
-                onMouseDown={stopPropagation}
-                onTouchStart={stopPropagation}
-                onMouseMove={stopPropagation}
-                onTouchMove={stopPropagation}
-                style={{
-                position: 'fixed',
-                top: penSettingsPos.top,
-                left: penSettingsPos.left,
-                background: 'rgba(255, 255, 255, 0.95)',
-                backdropFilter: 'blur(10px)',
-                padding: '12px',
-                borderRadius: '12px',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-                zIndex: 9999,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px',
-                minWidth: '220px'
-              }}>
-                <div style={{ display: 'flex', gap: '5px', justifyContent: 'space-between' }}>
-                  <button onClick={() => updateActivePen({ type: 'basic', width: 3 })} style={activePen.type === 'basic' ? activeBtn : btnStyle} title="기본펜"><Pencil size={18}/></button>
-                  <button onClick={() => updateActivePen({ type: 'pressure', width: 3 })} style={activePen.type === 'pressure' ? activeBtn : btnStyle} title="필압펜"><PenTool size={18}/></button>
-                  <button onClick={() => updateActivePen({ type: 'highlighter', width: 20 })} style={activePen.type === 'highlighter' ? activeBtn : btnStyle} title="형광펜"><Highlighter size={18}/></button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', color: '#666', whiteSpace: 'nowrap' }}>두께: {activePen.width}</span>
-                  <input type="range" min="1" max="50" value={activePen.width} onChange={(e) => updateActivePen({ width: parseInt(e.target.value) })} style={{ width: '100%', accentColor: '#6366f1' }} />
-                </div>
-                
-                {/* 20가지 색상 팔레트 */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
-                  {colorPalette.map(c => (
-                    <div 
-                      key={c} 
-                      onClick={() => updateActivePen({ color: c })} 
-                      style={{ 
-                        width: '24px', height: '24px', 
-                        borderRadius: '50%', background: c, 
-                        border: activePen.color === c ? '2px solid #6366f1' : '1px solid #ddd', 
-                        cursor: 'pointer', 
-                        transform: activePen.color === c ? 'scale(1.1)' : 'none', 
-                        transition: 'transform 0.2s' 
-                      }} 
-                    />
-                  ))}
-                </div>
-              </div>,
-              document.body
-            )}
-          </div>
-
-          <button onClick={() => setTool('eraser')} style={tool === 'eraser' ? activeBtn : btnStyle}><Eraser size={20}/></button>
-          <button onClick={handleCropTool} style={(tool === 'crop' || hasMask) ? activeBtn : btnStyle} title={hasMask ? "마스킹 해제" : "영역 잘라내기"}><Crop size={20}/></button>
-        </div>
-        
-        <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
-
-        {/* 줌 컨트롤 */}
-        <div ref={zoomControlRef} style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center', position: 'relative' }}>
-          <span 
-            onClick={() => setShowZoomSlider(!showZoomSlider)}
-            style={{ fontSize: '13px', color: '#666', fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }}
-            title="클릭하여 확대/축소"
-          >
-            {Math.round(stageScale * 100)}%
-          </span>
-
-          {showZoomSlider && createPortal(
-            <div ref={sliderRef} 
-              onMouseDown={stopPropagation}
-              onTouchStart={stopPropagation}
-              onMouseMove={stopPropagation}
-              onTouchMove={stopPropagation}
-              style={{
-              touchAction: 'none', // 브라우저 기본 제스처(새로고침 등) 방지
-              position: 'fixed',
-              top: sliderPos.top,
-              left: sliderPos.left,
-              background: 'rgba(255, 255, 255, 0.95)',
-              backdropFilter: 'blur(10px)',
-              padding: '8px 12px',
-              borderRadius: '8px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-              zIndex: 9999,
-              display: 'flex',
-              alignItems: 'center',
-              minWidth: '140px'
-            }}>
-              <input 
-                type="range" 
-                min="0.2" 
-                max="5" 
-                step="0.1" 
-                value={stageScale} 
-                onChange={handleZoomSliderChange}
-                style={{ width: '100%', cursor: 'pointer', accentColor: '#6366f1' }}
-              />
-            </div>,
-            document.body
-          )}
-
-          <button onClick={() => {setStageScale(1); setStagePos({x:0, y:0});}} style={btnStyle}><RotateCcw size={18}/></button>
-          <button onClick={toggleFullScreen} style={btnStyle} title={isFullScreen ? "전체화면 종료" : "전체화면"}>
-            {isFullScreen ? <Minimize size={18}/> : <Maximize size={18}/>}
-          </button>
-        </div>
-      </div>
+      <FloatingToolbar 
+        tool={tool} setTool={setTool}
+        pens={pens} activePenId={activePenId} setActivePenId={setActivePenId} updateActivePen={updateActivePen}
+        stageScale={stageScale} onZoomChange={handleZoomChange} onResetZoom={() => {setStageScale(1); setStagePos({x:0, y:0});}}
+        isFullScreen={isFullScreen} toggleFullScreen={toggleFullScreen}
+        hasMask={hasMask} handleCropTool={handleCropTool}
+        onFileChange={handleFileChange}
+      />
 
       {boardContent}
     </div>
