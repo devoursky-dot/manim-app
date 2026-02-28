@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Stage, Layer, Image, Rect, Line } from 'react-konva';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { FileUp, Hand, Pencil, Eraser, ZoomIn, ZoomOut, RotateCcw, Crop, Grip, Maximize, Minimize } from 'lucide-react';
+import { FileUp, Hand, Pencil, Eraser, ZoomIn, ZoomOut, RotateCcw, Crop, Grip } from 'lucide-react';
 
 // 최신 라이브러리 환경에 맞는 워커 설정
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -16,7 +16,6 @@ const UltimateSmartBoard = () => {
   const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0, orient: 'horizontal' }); // 툴바 위치 및 방향
   const [bgColor, setBgColor] = useState('#ffffff');
   const [currentCrop, setCurrentCrop] = useState(null);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
@@ -28,23 +27,6 @@ const UltimateSmartBoard = () => {
   React.useEffect(() => {
     setToolbarPos({ x: window.innerWidth / 2 - 220, y: 30, orient: 'horizontal' });
   }, []);
-
-  // 전체화면 변경 감지
-  React.useEffect(() => {
-    const handleFullScreenChange = () => setIsFullScreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', handleFullScreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
-  }, []);
-
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      }
-    }
-  };
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -318,9 +300,6 @@ const UltimateSmartBoard = () => {
         <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center' }}>
           <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>{Math.round(stageScale * 100)}%</span>
           <button onClick={() => {setStageScale(1); setStagePos({x:0, y:0});}} style={btnStyle}><RotateCcw size={18}/></button>
-          <button onClick={toggleFullScreen} style={btnStyle} title={isFullScreen ? "전체화면 종료" : "전체화면"}>
-            {isFullScreen ? <Minimize size={18}/> : <Maximize size={18}/>}
-          </button>
         </div>
       </div>
 
