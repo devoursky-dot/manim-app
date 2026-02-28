@@ -394,6 +394,11 @@ const UltimateSmartBoard = () => {
     };
   };
 
+  // 이벤트 전파 중단 헬퍼 함수 (팝업 내 터치 시 툴바 이동 방지)
+  const stopPropagation = (e) => {
+    e.stopPropagation();
+  };
+
   // --- 툴바 드래그 및 스냅 로직 ---
   const snapToolbar = (clientX, clientY) => {
     const iw = window.innerWidth;
@@ -631,7 +636,12 @@ const UltimateSmartBoard = () => {
           {/* 펜 설정 팝업 (Portal 사용) */}
           <div style={{ position: 'relative' }}>
             {showPenSettings && createPortal(
-              <div ref={penSettingsRef} style={{
+              <div ref={penSettingsRef} 
+                onMouseDown={stopPropagation}
+                onTouchStart={stopPropagation}
+                onMouseMove={stopPropagation}
+                onTouchMove={stopPropagation}
+                style={{
                 position: 'fixed',
                 top: penSettingsPos.top,
                 left: penSettingsPos.left,
@@ -695,7 +705,12 @@ const UltimateSmartBoard = () => {
           </span>
 
           {showZoomSlider && createPortal(
-            <div ref={sliderRef} style={{
+            <div ref={sliderRef} 
+              onMouseDown={stopPropagation}
+              onTouchStart={stopPropagation}
+              onMouseMove={stopPropagation}
+              onTouchMove={stopPropagation}
+              style={{
               position: 'fixed',
               top: sliderPos.top,
               left: sliderPos.left,
