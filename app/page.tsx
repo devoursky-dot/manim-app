@@ -61,7 +61,7 @@ export default function Home() {
           style={styles.menuToggleBtn}
           title={isMenuOpen ? "메뉴 닫기" : "메뉴 열기"}
         >
-          {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          {isMenuOpen ? <X size={16} /> : <Menu size={16} />}
         </button>
       )}
 
@@ -72,8 +72,6 @@ export default function Home() {
         opacity: (!activeApp || isMenuOpen) ? 1 : 0
       }}>
         <div style={styles.navLeft}>
-          <Rocket size={24} color="#A5B4FC" style={{ transform: "rotate(-45deg)" }} />
-          <span style={styles.navLogoText}>경남외고 지식저장소</span>
         </div>
         
         <div style={styles.navRight}>
@@ -99,9 +97,9 @@ export default function Home() {
             <MatrixRain />
             <div style={styles.megaTitleWrapper}>
               <div style={styles.glitchContainer}>
-                <h1 style={styles.megaNeonTitle}>경남외고 지식저장소</h1>
                 <div style={styles.glitchLayer}>경남외고 지식저장소</div>
                 <div style={styles.glitchLayer2}>경남외고 지식저장소</div>
+                <h1 style={styles.megaNeonTitle}>경남외고 지식저장소</h1>
               </div>
             </div>
           </div>
@@ -114,7 +112,7 @@ export default function Home() {
 
       <style jsx global>{`
         @keyframes neonFlicker {
-          0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { text-shadow: 0 0 20px #A5B4FC, 0 0 50px #6366f1, 0 0 80px #6366f1; }
+          0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { text-shadow: 0 0 20px #fff, 0 0 50px #0f0, 0 0 80px #0f0; }
           20%, 22%, 24%, 55% { text-shadow: none; opacity: 0.7; }
         }
         @keyframes glitchEffect {
@@ -137,14 +135,14 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   // 토글 버튼 스타일 (왼쪽 상단)
   menuToggleBtn: {
-    position: "fixed", top: "15px", left: "15px", zIndex: 110000,
-    backgroundColor: "rgba(30, 30, 40, 0.7)", color: "white", border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: "12px", padding: "8px", cursor: "pointer", backdropFilter: "blur(10px)",
+    position: "fixed", top: 0, right: 0, zIndex: 110000,
+    backgroundColor: "rgba(30, 30, 40, 0.5)", color: "white", border: "none",
+    borderBottomLeftRadius: "8px", padding: "6px", cursor: "pointer", backdropFilter: "blur(5px)",
     display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.3s"
   },
   // 상단 메뉴바 (숨김 애니메이션 적용)
   topNavbar: {
-    position: "fixed", top: 0, left: 0, height: "65px", width: "100%", 
+    position: "fixed", top: 0, left: 0, height: "32px", width: "100%", 
     backgroundColor: "rgba(10, 10, 15, 0.95)", backdropFilter: "blur(15px)",
     borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
     display: "flex", alignItems: "center", justifyContent: "space-between", 
@@ -152,17 +150,17 @@ const styles: { [key: string]: React.CSSProperties } = {
     transition: "transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s",
   },
   navLeft: { display: "flex", alignItems: "center", gap: "12px" },
-  navLogoText: { fontSize: "1.2rem", fontWeight: 800, color: "#EEF2FF" },
+  navLogoText: { fontSize: "0.6rem", fontWeight: 800, color: "#EEF2FF" },
   navRight: { display: "flex", gap: "10px" },
   navBtn: {
-    display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px",
+    display: "flex", alignItems: "center", gap: "8px", padding: "4px 16px",
     backgroundColor: "transparent", border: "1px solid transparent", color: "#9CA3AF",
-    borderRadius: "20px", cursor: "pointer", fontSize: "14px", fontWeight: 600,
+    borderRadius: "20px", cursor: "pointer", fontSize: "7px", fontWeight: 600,
   },
   navBtnActive: {
-    display: "flex", alignItems: "center", gap: "8px", padding: "8px 16px",
+    display: "flex", alignItems: "center", gap: "8px", padding: "4px 16px",
     backgroundColor: "rgba(99, 102, 241, 0.15)", border: "1px solid rgba(99, 102, 241, 0.4)",
-    color: "#A5B4FC", borderRadius: "20px", fontSize: "14px", fontWeight: 700,
+    color: "#A5B4FC", borderRadius: "20px", fontSize: "7px", fontWeight: 700,
   },
   contentArea: { flex: 1, width: "100%", position: "relative" },
   heroSection: {
@@ -175,18 +173,19 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   glitchContainer: { position: "relative", width: "100%", textAlign: "center" },
   megaNeonTitle: {
-    fontSize: "8vw", fontWeight: 950, color: "#E0E7FF",
-    textShadow: "0 0 20px #A5B4FC, 0 0 50px #6366f1",
+    fontSize: "8vw", fontWeight: 950, color: "#FFFFFF",
+    textShadow: "0 0 20px #fff, 0 0 50px #0f0, 0 0 80px #0f0",
     whiteSpace: "nowrap", animation: "neonFlicker 5s infinite",
+    position: "relative", zIndex: 10,
   },
   glitchLayer: {
     position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
-    fontSize: "8vw", fontWeight: 950, color: "#F0F", clipPath: "inset(80% 0 0 0)",
-    animation: "glitchEffect 3s infinite", opacity: 0.8,
+    fontSize: "8vw", fontWeight: 950, color: "#000000", clipPath: "inset(80% 0 0 0)",
+    animation: "glitchEffect 3s infinite", opacity: 0.8, zIndex: 1,
   },
   glitchLayer2: {
     position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
-    fontSize: "8vw", fontWeight: 950, color: "#0FF", clipPath: "inset(0 80% 0 0)",
-    animation: "glitchEffect2 2s infinite", opacity: 0.8,
+    fontSize: "8vw", fontWeight: 950, color: "#0F0", clipPath: "inset(0 80% 0 0)",
+    animation: "glitchEffect2 2s infinite", opacity: 0.8, zIndex: 2,
   },
 };
