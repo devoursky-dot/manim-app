@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Stage, Layer, Image, Rect, Line } from 'react-konva';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { FileUp, Hand, Pencil, Eraser, ZoomIn, ZoomOut, RotateCcw, Crop, Grip } from 'lucide-react';
+import { FileUp, Hand, Pencil, Eraser, ZoomIn, ZoomOut, RotateCcw, Crop } from 'lucide-react';
 
 // 최신 라이브러리 환경에 맞는 워커 설정
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -12,19 +12,13 @@ const UltimateSmartBoard = () => {
   const [lines, setLines] = useState([]);
   const [tool, setTool] = useState('pen');
   const [stageScale, setStageScale] = useState(1);
-  const [stagePos, setStagePos] = useState({ x: 0, y: 0 }); // 캔버스 위치
-  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0, orient: 'horizontal' }); // 툴바 위치 및 방향
+  const [stagePos, setStagePos] = useState({ x: 0, y: 0 });
   const [bgColor, setBgColor] = useState('#ffffff');
   const [currentCrop, setCurrentCrop] = useState(null);
   
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
   const fileInputRef = useRef(null);
-
-  // 초기 툴바 위치 설정 (화면 상단 중앙)
-  React.useEffect(() => {
-    setToolbarPos({ x: window.innerWidth / 2 - 220, y: 30, orient: 'horizontal' });
-  }, []);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -160,110 +154,20 @@ const UltimateSmartBoard = () => {
     });
   };
 
-  // --- 툴바 드래그 및 스냅 로직 ---
-  const handleToolbarDragEnd = (e) => {
-    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
-    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
-    
-    // 유효하지 않은 좌표 무시
-    if (!clientX || !clientY) return;
-
-    const iw = window.innerWidth;
-    const ih = window.innerHeight;
-    const margin = 20; // 화면 끝에서의 여백
-    const snapDist = 100; // 자석 효과 감지 거리
-
-    let nextOrient = toolbarPos.orient;
-    let nextX = clientX;
-    let nextY = clientY;
-
-    // 1. 가장자리 감지 및 방향 결정 (상 -> 하 -> 좌 -> 우 순서)
-    if (clientY < snapDist) { // 상단
-        nextOrient = 'horizontal';
-        nextY = margin;
-        nextX = Math.max(margin, Math.min(clientX - 200, iw - 450)); // 중앙 정렬 보정
-    } else if (clientY > ih - snapDist) { // 하단
-        nextOrient = 'horizontal';
-        nextY = ih - 80; 
-        nextX = Math.max(margin, Math.min(clientX - 200, iw - 450));
-    } else if (clientX < snapDist) { // 좌측
-        nextOrient = 'vertical';
-        nextX = margin;
-        nextY = Math.max(margin, Math.min(clientY - 200, ih - 450));
-    } else if (clientX > iw - snapDist) { // 우측
-        nextOrient = 'vertical';
-        nextX = iw - 80;
-        nextY = Math.max(margin, Math.min(clientY - 200, ih - 450));
-    } else {
-        // 허공에 놓았을 때: 현재 방향 유지하고 위치만 업데이트
-        // 드래그 시 마우스가 툴바의 중앙을 잡았다고 가정하고 좌표 보정
-        if (nextOrient === 'horizontal') {
-            nextX -= 200; 
-            nextY -= 30;
-        } else {
-            nextX -= 30;
-            nextY -= 200;
-        }
-    }
-    
-    // 2. 화면 밖으로 나가지 않도록 최종 클램핑
-    if (nextOrient === 'horizontal') {
-        nextX = Math.max(margin, Math.min(nextX, iw - 450));
-        nextY = Math.max(margin, Math.min(nextY, ih - 80));
-    } else {
-        nextX = Math.max(margin, Math.min(nextX, iw - 80));
-        nextY = Math.max(margin, Math.min(nextY, ih - 450));
-    }
-
-    setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
-  };
-
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222', overflow: 'hidden' }}>
-      {/* 플로팅 툴바 */}
-      <div 
-        draggable
-        onDragEnd={handleToolbarDragEnd}
-        style={{
-          position: 'fixed',
-          left: toolbarPos.x,
-          top: toolbarPos.y,
-          display: 'flex',
-          flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '10px',
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(10px)',
-          borderRadius: '16px',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          zIndex: 1000,
-          transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)', // 부드러운 이동 애니메이션
-          cursor: 'move'
-        }}
-      >
-        {/* 드래그 핸들 */}
-        <div style={{ color: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}>
-            <Grip size={20} style={{ transform: toolbarPos.orient === 'horizontal' ? 'rotate(90deg)' : 'none' }} />
-        </div>
-
-        {/* 도구 모음 */}
-        <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '8px' }}>
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222' }}>
+      <div style={toolbarStyle}>
+        <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => fileInputRef.current.click()} style={btnStyle} title="PDF 불러오기"><FileUp size={20}/></button>
           <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="application/pdf" hidden />
-          
-          <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
-          
+          <div style={divider} />
           <button onClick={() => setTool('hand')} style={tool === 'hand' ? activeBtn : btnStyle}><Hand size={20}/></button>
           <button onClick={() => setTool('pen')} style={tool === 'pen' ? activeBtn : btnStyle}><Pencil size={20}/></button>
           <button onClick={() => setTool('eraser')} style={tool === 'eraser' ? activeBtn : btnStyle}><Eraser size={20}/></button>
           <button onClick={() => setTool('crop')} style={tool === 'crop' ? activeBtn : btnStyle} title="영역 잘라내기"><Crop size={20}/></button>
         </div>
         
-        <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
-
-        {/* 줌 컨트롤 */}
-        <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>{Math.round(stageScale * 100)}%</span>
           <button onClick={() => {setStageScale(1); setStagePos({x:0, y:0});}} style={btnStyle}><RotateCcw size={18}/></button>
         </div>
@@ -283,10 +187,10 @@ const UltimateSmartBoard = () => {
         )}
       </div>
 
-      <div style={{ width: '100%', height: '100%', cursor: tool === 'hand' ? 'grab' : 'crosshair' }}>
+      <div style={{ flex: 1, cursor: tool === 'hand' ? 'grab' : 'crosshair', overflow: 'hidden' }}>
         <Stage
           width={window.innerWidth}
-          height={window.innerHeight}
+          height={window.innerHeight - 60}
           scaleX={stageScale}
           scaleY={stageScale}
           x={stagePos.x}
@@ -352,9 +256,9 @@ const UltimateSmartBoard = () => {
   );
 };
 
+const toolbarStyle = { height: '60px', background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', zIndex: 100, borderBottom: '1px solid #ddd' };
 const btnStyle = { padding: '8px', border: '1px solid #eee', background: '#fff', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center' };
-const activeBtn = { ...btnStyle, background: '#eef2ff', border: '1px solid #6366f1', color: '#6366f1' };
-const dividerHorizontal = { width: '1px', height: '20px', background: '#eee', margin: '0 8px' };
-const dividerVertical = { width: '20px', height: '1px', background: '#eee', margin: '8px 0' };
+const activeBtn = { ...btnStyle, background: '#f0f3ff', border: '1px solid #6366f1', color: '#6366f1' };
+const divider = { width: '1px', height: '20px', background: '#eee', margin: '0 8px' };
 
 export default UltimateSmartBoard;
