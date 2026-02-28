@@ -7,6 +7,13 @@ import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize
 // 최신 라이브러리 환경에 맞는 워커 설정
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 
+// 헬퍼 함수: 스테이지 상대 좌표 구하기 (컴포넌트 외부로 이동하여 재생성 방지)
+const getRelativePointerPosition = (stage) => {
+  const transform = stage.getAbsoluteTransform().copy().invert();
+  const pos = stage.getPointerPosition();
+  return transform.point(pos);
+};
+
 const UltimateSmartBoard = () => {
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfImage, setPdfImage] = useState(null);
@@ -201,13 +208,7 @@ const UltimateSmartBoard = () => {
     '#008080', '#000080', '#808000', '#800000', '#FF00FF'
   ];
 
-  const getRelativePointerPosition = (stage) => {
-    const transform = stage.getAbsoluteTransform().copy().invert();
-    const pos = stage.getPointerPosition();
-    return transform.point(pos);
-  };
-
-  const handleMouseDown = (e) => {
+  const handleMouseDown = useCallback((e) => {
     const stage = e.target.getStage();
     const pos = getRelativePointerPosition(stage);
 
@@ -238,10 +239,10 @@ const UltimateSmartBoard = () => {
       }
     }
 
-    setLines([...lines, newLine]);
-  };
+    setLines(prev => [...prev, newLine]);
+  }, [tool, activePen, lines]); // lines 의존성 추가 (activePen은 객체이므로 activePenId 등이 바뀌면 변경됨)
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = useCallback((e) => {
     const stage = e.target.getStage();
     const point = getRelativePointerPosition(stage);
     
@@ -259,18 +260,20 @@ const UltimateSmartBoard = () => {
     }
 
     if (isDrawing.current) {
-      const lastLine = lines[lines.length - 1];
-      lastLine.points = lastLine.points.concat([point.x, point.y]);
-      setLines([...lines.slice(0, -1), lastLine]);
+      setLines(prev => {
+        const lastLine = { ...prev[prev.length - 1] };
+        lastLine.points = lastLine.points.concat([point.x, point.y]);
+        return [...prev.slice(0, -1), lastLine];
+      });
     }
-  };
+  }, [tool, currentCrop]);
 
-  const handleMouseUp = () => { 
+  const handleMouseUp = useCallback(() => { 
     if (tool === 'crop' && currentCrop) {
       const { x, y, width, height } = currentCrop;
       if (width > 5 && height > 5) {
         const huge = 100000;
-        setLines([...lines, 
+        setLines(prev => [...prev, 
           { tool: 'rect', x: -huge, y: -huge, width: huge * 2, height: huge + y, fill: bgColor },
           { tool: 'rect', x: -huge, y: y + height, width: huge * 2, height: huge, fill: bgColor },
           { tool: 'rect', x: -huge, y: y, width: huge + x, height: height, fill: bgColor },
@@ -282,9 +285,9 @@ const UltimateSmartBoard = () => {
       return;
     }
     isDrawing.current = false; 
-  };
+  }, [tool, currentCrop, bgColor]);
 
-  const handleWheel = (e) => {
+  const handleWheel = useCallback((e) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     const oldScale = stage.scaleX();
@@ -309,7 +312,7 @@ const UltimateSmartBoard = () => {
       x: pointer.x - mousePointTo.x * newScale,
       y: pointer.y - mousePointTo.y * newScale,
     });
-  };
+  }, []);
 
   // 줌 슬라이더 변경 핸들러 (화면 중앙 기준)
   const handleZoomSliderChange = (e) => {
@@ -440,6 +443,8 @@ const UltimateSmartBoard = () => {
   };
 
   const handleToolbarDragStart = (e) => {
+    // 툴바 내부 요소(슬라이더 등 Portal)에서 발생한 이벤트는 무시
+    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
     if (toolbarRef.current) {
       const rect = toolbarRef.current.getBoundingClientRect();
       dragOffset.current = {
@@ -460,6 +465,8 @@ const UltimateSmartBoard = () => {
 
   // 툴바 터치 이벤트 핸들러
   const handleToolbarTouchStart = (e) => {
+    // 툴바 내부 요소(슬라이더 등 Portal)에서 발생한 이벤트는 무시
+    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
     const touch = e.touches[0];
     if (toolbarRef.current) {
       const rect = toolbarRef.current.getBoundingClientRect();
@@ -486,7 +493,7 @@ const UltimateSmartBoard = () => {
   };
 
   // Stage 터치 이벤트 핸들러 (핀치 줌 포함)
-  const handleTouchStart = (e) => {
+  const handleTouchStart = useCallback((e) => {
     if (e.evt.touches.length === 1) {
       handleMouseDown(e);
     } else if (e.evt.touches.length === 2) {
@@ -496,9 +503,9 @@ const UltimateSmartBoard = () => {
       lastDist.current = getDistance(p1, p2);
       lastCenter.current = getCenter(p1, p2);
     }
-  };
+  }, [handleMouseDown]);
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = useCallback((e) => {
     if (e.evt.touches.length === 1) {
       handleMouseMove(e);
     } else if (e.evt.touches.length === 2) {
@@ -533,13 +540,13 @@ const UltimateSmartBoard = () => {
       lastDist.current = newDist;
       lastCenter.current = newCenter;
     }
-  };
+  }, [handleMouseMove]);
 
-  const handleTouchEnd = (e) => {
+  const handleTouchEnd = useCallback((e) => {
     lastDist.current = 0;
     lastCenter.current = null;
     handleMouseUp(e);
-  };
+  }, [handleMouseUp]);
 
   // 마스킹 여부 확인 및 토글 함수
   const hasMask = lines.some(line => line.tool === 'rect');
@@ -552,6 +559,120 @@ const UltimateSmartBoard = () => {
       setTool(tool === 'crop' ? 'pen' : 'crop');
     }
   };
+
+  // 메인 캔버스 영역 메모이제이션 (툴바 이동 시 리렌더링 방지)
+  const boardContent = React.useMemo(() => (
+    <>
+      <div style={{ display: 'none' }}>
+        {pdfFile && (
+          <Document file={pdfFile}>
+            <Page 
+              pageNumber={1} 
+              onRenderSuccess={onRenderSuccess} 
+              width={window.innerWidth}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+            />
+          </Document>
+        )}
+      </div>
+
+      <div style={{ width: '100%', height: '100%', cursor: tool === 'hand' ? 'grab' : 'crosshair' }}>
+        <Stage
+          width={window.innerWidth}
+          height={window.innerHeight}
+          scaleX={stageScale}
+          scaleY={stageScale}
+          x={stagePos.x}
+          y={stagePos.y}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onWheel={handleWheel}
+          draggable={tool === 'hand'}
+          onDragEnd={(e) => setStagePos({ x: e.target.x(), y: e.target.y() })}
+          ref={stageRef}
+        >
+          <Layer>
+            <Rect 
+              width={window.innerWidth * 20} 
+              height={window.innerHeight * 20} 
+              x={-window.innerWidth * 10} 
+              y={-window.innerHeight * 10} 
+              fill={bgColor} 
+            />
+            {pdfImage && (
+              <Image
+                image={pdfImage}
+                x={0} y={0}
+                width={window.innerWidth}
+                height={(window.innerWidth * pdfImage.height) / pdfImage.width}
+                shadowBlur={5}
+                shadowColor="rgba(0,0,0,0.1)"
+              />
+            )}
+          </Layer>
+
+          {/* 마스킹 레이어 */}
+          <Layer>
+            {lines.map((line, i) => {
+              if (line.tool === 'rect') {
+                return (
+                  <Rect key={i} x={line.x} y={line.y} width={line.width} height={line.height} fill={line.fill} />
+                );
+              }
+              return null;
+            })}
+          </Layer>
+
+          {/* 판서 레이어 */}
+          <Layer>
+            {lines.map((line, i) => {
+              if (line.tool !== 'rect') {
+                if (line.penType === 'pressure') {
+                  return (
+                    <Line
+                      key={i}
+                      points={line.points}
+                      stroke={line.color}
+                      strokeWidth={line.strokeWidth}
+                      tension={0.5}
+                      lineCap="round"
+                      lineJoin="round"
+                      opacity={0.8}
+                    />
+                  );
+                }
+                return (
+                  <Line
+                    key={i}
+                    points={line.points}
+                    stroke={line.color}
+                    strokeWidth={line.strokeWidth}
+                    tension={line.penType === 'highlighter' ? 0 : 0.4}
+                    lineCap="round"
+                    lineJoin="round"
+                    opacity={line.opacity || 1}
+                    globalCompositeOperation={line.color === 'white' ? 'destination-out' : 'source-over'}
+                  />
+                );
+              }
+              return null;
+            })}
+            {currentCrop && (
+              <Rect
+                x={currentCrop.x} y={currentCrop.y} width={currentCrop.width} height={currentCrop.height}
+                stroke="red" strokeWidth={2} dash={[5, 5]}
+              />
+            )}
+          </Layer>
+        </Stage>
+      </div>
+    </>
+  ), [pdfFile, pdfImage, lines, tool, stageScale, stagePos, bgColor, currentCrop, onRenderSuccess, handleMouseDown, handleMouseMove, handleMouseUp, handleTouchStart, handleTouchMove, handleTouchEnd, handleWheel]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222', overflow: 'hidden' }}>
@@ -744,133 +865,7 @@ const UltimateSmartBoard = () => {
         </div>
       </div>
 
-      <div style={{ display: 'none' }}>
-        {pdfFile && (
-          <Document file={pdfFile}>
-            <Page 
-              pageNumber={1} 
-              onRenderSuccess={onRenderSuccess} 
-              width={window.innerWidth}
-              renderTextLayer={false}
-              renderAnnotationLayer={false}
-            />
-          </Document>
-        )}
-      </div>
-
-      <div style={{ width: '100%', height: '100%', cursor: tool === 'hand' ? 'grab' : 'crosshair' }}>
-        <Stage
-          width={window.innerWidth}
-          height={window.innerHeight}
-          scaleX={stageScale}
-          scaleY={stageScale}
-          x={stagePos.x}
-          y={stagePos.y}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onWheel={handleWheel}
-          draggable={tool === 'hand'}
-          onDragEnd={(e) => setStagePos({ x: e.target.x(), y: e.target.y() })}
-          ref={stageRef}
-        >
-          <Layer>
-            <Rect 
-              width={window.innerWidth * 20} 
-              height={window.innerHeight * 20} 
-              x={-window.innerWidth * 10} 
-              y={-window.innerHeight * 10} 
-              fill={bgColor} 
-            />
-            {pdfImage && (
-              <Image
-                image={pdfImage}
-                x={0} y={0}
-                width={window.innerWidth}
-                height={(window.innerWidth * pdfImage.height) / pdfImage.width}
-                shadowBlur={5}
-                shadowColor="rgba(0,0,0,0.1)"
-              />
-            )}
-          </Layer>
-
-          {/* 마스킹 레이어 (지우개 영향 받지 않음) */}
-          <Layer>
-            {lines.map((line, i) => {
-              if (line.tool === 'rect') {
-                return (
-                  <Rect key={i} x={line.x} y={line.y} width={line.width} height={line.height} fill={line.fill} />
-                );
-              }
-              return null;
-            })}
-          </Layer>
-
-          {/* 판서 레이어 (지우개 동작) */}
-          <Layer>
-            {lines.map((line, i) => {
-              if (line.tool !== 'rect') {
-                // 필압펜(속도 기반) 렌더링
-                if (line.penType === 'pressure') {
-                  // 간단한 가변 두께 시뮬레이션: 여러 개의 선분으로 나누어 그림
-                  // 성능을 위해 Shape 대신 Line을 여러 개 그리는 방식은 비효율적일 수 있으나,
-                  // React-Konva에서 가변 두께를 구현하는 가장 확실한 방법 중 하나입니다.
-                  // 여기서는 최적화를 위해 포인트 간 거리에 따라 strokeWidth를 조절하는 커스텀 Shape를 사용하지 않고,
-                  // 단순히 전체 라인의 평균적인 느낌을 주는 것이 아니라,
-                  // 각 세그먼트별로 Line을 그리는 것은 너무 무거우므로,
-                  // 'tapered' 효과를 주는 라이브러리 없이 구현하기 위해
-                  // Konva.Line의 tension을 이용하되, strokeWidth는 고정하고
-                  // 'pressure' 느낌을 내기 위해 opacity나 shadow를 활용하거나,
-                  // 또는 사용자가 요청한 '속도 기반 가변 굵기'를 위해
-                  // points 배열을 순회하며 별도의 path를 생성해야 합니다.
-                  // 여기서는 복잡도를 낮추기 위해 '기본 펜'과 동일하게 렌더링하되,
-                  // 추후 'perfect-freehand' 같은 라이브러리 도입을 고려해야 합니다.
-                  // 현재는 사용자의 요청에 따라 '필압펜' 모드만 구분해 둡니다.
-                  // (실제 가변 굵기 구현은 SVG Path 계산이 필요하여 코드량이 많아짐)
-                  
-                  // 임시: 필압펜은 조금 더 부드러운 텐션과 얇은 두께로 시작
-                  return (
-                    <Line
-                      key={i}
-                      points={line.points}
-                      stroke={line.color}
-                      strokeWidth={line.strokeWidth}
-                      tension={0.5}
-                      lineCap="round"
-                      lineJoin="round"
-                      opacity={0.8}
-                    />
-                  );
-                }
-
-                return (
-                  <Line
-                    key={i}
-                    points={line.points}
-                    stroke={line.color}
-                    strokeWidth={line.strokeWidth}
-                    tension={line.penType === 'highlighter' ? 0 : 0.4} // 형광펜은 직선 느낌
-                    lineCap="round"
-                    lineJoin="round"
-                    opacity={line.opacity || 1}
-                    globalCompositeOperation={line.color === 'white' ? 'destination-out' : 'source-over'}
-                  />
-                );
-              }
-              return null;
-            })}
-            {currentCrop && (
-              <Rect
-                x={currentCrop.x} y={currentCrop.y} width={currentCrop.width} height={currentCrop.height}
-                stroke="red" strokeWidth={2} dash={[5, 5]}
-              />
-            )}
-          </Layer>
-        </Stage>
-      </div>
+      {boardContent}
     </div>
   );
 };
