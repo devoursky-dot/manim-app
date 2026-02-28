@@ -46,6 +46,7 @@ const UltimateSmartBoard = () => {
   const penSettingsRef = useRef(null);
   const lastDist = useRef(0);
   const lastCenter = useRef(null);
+  const isDraggingToolbar = useRef(false); // 툴바 드래그 상태 추적
 
   const activePen = pens[activePenId];
   const updateActivePen = (updates) => {
@@ -467,6 +468,7 @@ const UltimateSmartBoard = () => {
   const handleToolbarTouchStart = (e) => {
     // 툴바 내부 요소(슬라이더 등 Portal)에서 발생한 이벤트는 무시
     if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
+    isDraggingToolbar.current = true; // 드래그 시작 플래그 설정
     const touch = e.touches[0];
     if (toolbarRef.current) {
       const rect = toolbarRef.current.getBoundingClientRect();
@@ -478,6 +480,7 @@ const UltimateSmartBoard = () => {
   };
 
   const handleToolbarTouchMove = (e) => {
+    if (!isDraggingToolbar.current) return; // 드래그 중이 아니면 무시
     e.preventDefault(); // 스크롤 방지
     const touch = e.touches[0];
     setToolbarPos(prev => ({
@@ -488,6 +491,8 @@ const UltimateSmartBoard = () => {
   };
 
   const handleToolbarTouchEnd = (e) => {
+    if (!isDraggingToolbar.current) return;
+    isDraggingToolbar.current = false; // 드래그 종료
     const touch = e.changedTouches[0];
     snapToolbar(touch.clientX, touch.clientY);
   };
@@ -832,6 +837,7 @@ const UltimateSmartBoard = () => {
               onMouseMove={stopPropagation}
               onTouchMove={stopPropagation}
               style={{
+              touchAction: 'none', // 브라우저 기본 제스처(새로고침 등) 방지
               position: 'fixed',
               top: sliderPos.top,
               left: sliderPos.left,
