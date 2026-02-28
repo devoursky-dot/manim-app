@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import { Presentation, MonitorPlay, Home as HomeIcon, Menu, X } from "lucide-react";
+import { Presentation, MonitorPlay, Rocket, Home as HomeIcon, Menu, X } from "lucide-react";
 
 const ManimApp = dynamic(() => import("./components/manim_app"), { ssr: false });
 const LectureApp = dynamic(() => import("./components/lecture_test"), { ssr: false });
@@ -51,20 +51,6 @@ const MatrixRain = () => {
 export default function Home() {
   const [activeApp, setActiveApp] = useState<"manim" | "lecture" | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false); // 메뉴 확장 상태
-
-  // [추가] 새로고침 및 페이지 이탈 방지 로직
-  useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = ""; // 브라우저 표준 경고창 표시
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, []);
 
   return (
     <div style={styles.mainWrapper}>

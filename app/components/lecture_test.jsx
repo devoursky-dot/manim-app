@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Stage, Layer, Image, Rect, Line } from 'react-konva';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { FileUp, Hand, Pencil, Eraser, ZoomIn, ZoomOut, RotateCcw, Crop, Grip, Maximize, Minimize } from 'lucide-react';
+import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize } from 'lucide-react';
 
 // 최신 라이브러리 환경에 맞는 워커 설정
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
 
 const UltimateSmartBoard = () => {
   const [pdfFile, setPdfFile] = useState(null);
@@ -17,12 +18,16 @@ const UltimateSmartBoard = () => {
   const [bgColor, setBgColor] = useState('#ffffff');
   const [currentCrop, setCurrentCrop] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [showZoomSlider, setShowZoomSlider] = useState(false);
+  const [sliderPos, setSliderPos] = useState({ top: 0, left: 0 });
   
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
   const fileInputRef = useRef(null);
   const toolbarRef = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+  const zoomControlRef = useRef(null);
+  const sliderRef = useRef(null);
 
   // 초기 툴바 위치 설정 (화면 상단 중앙)
   React.useEffect(() => {
@@ -45,6 +50,37 @@ const UltimateSmartBoard = () => {
       }
     }
   };
+
+  // 줌 슬라이더 위치 계산
+  React.useEffect(() => {
+    if (showZoomSlider && zoomControlRef.current) {
+      const rect = zoomControlRef.current.getBoundingClientRect();
+      if (toolbarPos.orient === 'horizontal') {
+        setSliderPos({
+          top: rect.bottom + 10,
+          left: rect.left + rect.width / 2 - 70 // minWidth 140 / 2
+        });
+      } else {
+        setSliderPos({
+          top: rect.top + rect.height / 2 - 20,
+          left: rect.right + 10
+        });
+      }
+    }
+  }, [showZoomSlider, toolbarPos]);
+
+  // 줌 슬라이더 외부 클릭 시 닫기
+  React.useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showZoomSlider && 
+          zoomControlRef.current && !zoomControlRef.current.contains(event.target) &&
+          sliderRef.current && !sliderRef.current.contains(event.target)) {
+        setShowZoomSlider(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showZoomSlider]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -289,7 +325,7 @@ const UltimateSmartBoard = () => {
         }}
       >
         {/* 드래그 핸들 */}
-        <div style={{ color: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}>
+        <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', cursor: 'grab' }}>
             <Grip size={20} style={{ transform: toolbarPos.orient === 'horizontal' ? 'rotate(90deg)' : 'none' }} />
         </div>
 
@@ -315,8 +351,43 @@ const UltimateSmartBoard = () => {
         <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
 
         {/* 줌 컨트롤 */}
-        <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: '#666', fontWeight: 'bold' }}>{Math.round(stageScale * 100)}%</span>
+        <div ref={zoomControlRef} style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center', position: 'relative' }}>
+          <span 
+            onClick={() => setShowZoomSlider(!showZoomSlider)}
+            style={{ fontSize: '13px', color: '#666', fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }}
+            title="클릭하여 확대/축소"
+          >
+            {Math.round(stageScale * 100)}%
+          </span>
+
+          {showZoomSlider && createPortal(
+            <div ref={sliderRef} style={{
+              position: 'fixed',
+              top: sliderPos.top,
+              left: sliderPos.left,
+              background: 'rgba(255, 255, 255, 0.95)',
+              backdropFilter: 'blur(10px)',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              minWidth: '140px'
+            }}>
+              <input 
+                type="range" 
+                min="0.2" 
+                max="5" 
+                step="0.1" 
+                value={stageScale} 
+                onChange={(e) => setStageScale(parseFloat(e.target.value))}
+                style={{ width: '100%', cursor: 'pointer', accentColor: '#6366f1' }}
+              />
+            </div>,
+            document.body
+          )}
+
           <button onClick={() => {setStageScale(1); setStagePos({x:0, y:0});}} style={btnStyle}><RotateCcw size={18}/></button>
           <button onClick={toggleFullScreen} style={btnStyle} title={isFullScreen ? "전체화면 종료" : "전체화면"}>
             {isFullScreen ? <Minimize size={18}/> : <Maximize size={18}/>}
@@ -421,7 +492,7 @@ const UltimateSmartBoard = () => {
   );
 };
 
-const btnStyle = { padding: '8px', border: '1px solid #eee', background: '#fff', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center' };
+const btnStyle = { padding: '8px', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', transition: 'all 0.2s' };
 const activeBtn = { ...btnStyle, background: '#eef2ff', border: '1px solid #6366f1', color: '#6366f1' };
 const dividerHorizontal = { width: '1px', height: '20px', background: '#eee', margin: '0 8px' };
 const dividerVertical = { width: '20px', height: '1px', background: '#eee', margin: '8px 0' };
