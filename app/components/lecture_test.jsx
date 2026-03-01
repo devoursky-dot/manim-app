@@ -31,15 +31,12 @@ const FloatingToolbar = React.memo(({
   hasMask, handleCropTool,
   onFileChange 
 }) => {
-  const [toolbarPos, setToolbarPos] = useState({ x: window.innerWidth / 2 - 220, y: window.innerHeight - 100, orient: 'horizontal' });
   const [showPenSettings, setShowPenSettings] = useState(false);
   const [penSettingsPos, setPenSettingsPos] = useState({ top: 0, left: 0 });
   const [showZoomSlider, setShowZoomSlider] = useState(false);
   const [sliderPos, setSliderPos] = useState({ top: 0, left: 0 });
 
   const toolbarRef = useRef(null);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const isDraggingToolbar = useRef(false);
   const fileInputRef = useRef(null);
   const zoomControlRef = useRef(null);
   const sliderRef = useRef(null);
@@ -55,26 +52,18 @@ const FloatingToolbar = React.memo(({
   React.useEffect(() => {
     if (showZoomSlider && zoomControlRef.current) {
       const rect = zoomControlRef.current.getBoundingClientRect();
-      if (toolbarPos.orient === 'horizontal') {
-        setSliderPos({ top: rect.bottom + 10, left: rect.left + rect.width / 2 - 70 });
-      } else {
-        setSliderPos({ top: rect.top + rect.height / 2 - 20, left: rect.right + 10 });
-      }
+      setSliderPos({ top: rect.top - 60, left: rect.left + rect.width / 2 - 70 });
     }
-  }, [showZoomSlider, toolbarPos]);
+  }, [showZoomSlider]);
 
   // 펜 설정 메뉴 위치 계산
   React.useEffect(() => {
     const activeBtnRef = penBtnRefs.current[activePenId];
     if (showPenSettings && activeBtnRef) {
       const rect = activeBtnRef.getBoundingClientRect();
-      if (toolbarPos.orient === 'horizontal') {
-        setPenSettingsPos({ top: rect.bottom + 10, left: rect.left + rect.width / 2 - 110 });
-      } else {
-        setPenSettingsPos({ top: rect.top + rect.height / 2 - 60, left: rect.right + 10 });
-      }
+      setPenSettingsPos({ top: rect.top - 160, left: rect.left + rect.width / 2 - 110 });
     }
-  }, [showPenSettings, toolbarPos, activePenId]);
+  }, [showPenSettings, activePenId]);
 
   // 외부 클릭 시 팝업 닫기
   React.useEffect(() => {
@@ -93,92 +82,19 @@ const FloatingToolbar = React.memo(({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showZoomSlider, showPenSettings, activePenId]);
 
-  // 툴바 스냅 로직
-  const snapToolbar = (clientX, clientY) => {
-    const iw = window.innerWidth;
-    const ih = window.innerHeight;
-    const margin = 20;
-    const snapDist = 100;
-    const rect = toolbarRef.current ? toolbarRef.current.getBoundingClientRect() : { width: 420, height: 60 };
-    const tbW = rect.width;
-    const tbH = rect.height;
-
-    let nextOrient = toolbarPos.orient;
-    let nextX = clientX;
-    let nextY = clientY;
-
-    if (clientY < snapDist) { nextOrient = 'horizontal'; nextY = margin; nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin)); }
-    else if (clientY > ih - snapDist) { nextOrient = 'horizontal'; nextY = ih - tbH - margin; nextX = Math.max(margin, Math.min(clientX - tbW / 2, iw - tbW - margin)); }
-    else if (clientX < snapDist) { nextOrient = 'vertical'; nextX = margin; nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin)); }
-    else if (clientX > iw - snapDist) { nextOrient = 'vertical'; nextX = iw - tbH - margin; nextY = Math.max(margin, Math.min(clientY - tbW / 2, ih - tbW - margin)); }
-    else {
-        nextX = clientX - dragOffset.current.x;
-        nextY = clientY - dragOffset.current.y;
-        const headSize = 40;
-        nextX = Math.max(margin, Math.min(nextX, iw - margin - headSize));
-        nextY = Math.max(margin, Math.min(nextY, ih - margin - headSize));
-    }
-    setToolbarPos({ x: nextX, y: nextY, orient: nextOrient });
-  };
-
-  const handleToolbarDragStart = (e) => {
-    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    }
-  };
-
-  const handleToolbarDragEnd = (e) => {
-    const clientX = e.clientX || e.changedTouches?.[0]?.clientX;
-    const clientY = e.clientY || e.changedTouches?.[0]?.clientY;
-    if (!clientX || !clientY) return;
-    snapToolbar(clientX, clientY);
-  };
-
-  const handleToolbarTouchStart = (e) => {
-    if (toolbarRef.current && !toolbarRef.current.contains(e.target)) return;
-    isDraggingToolbar.current = true;
-    const touch = e.touches[0];
-    if (toolbarRef.current) {
-      const rect = toolbarRef.current.getBoundingClientRect();
-      dragOffset.current = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-    }
-  };
-
-  const handleToolbarTouchMove = (e) => {
-    if (!isDraggingToolbar.current) return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    setToolbarPos(prev => ({ ...prev, x: touch.clientX - dragOffset.current.x, y: touch.clientY - dragOffset.current.y }));
-  };
-
-  const handleToolbarTouchEnd = (e) => {
-    if (!isDraggingToolbar.current) return;
-    isDraggingToolbar.current = false;
-    const touch = e.changedTouches[0];
-    snapToolbar(touch.clientX, touch.clientY);
-  };
-
   return (
     <div 
       ref={toolbarRef}
-      draggable
-      onDragStart={handleToolbarDragStart}
-      onDragEnd={handleToolbarDragEnd}
-      onTouchStart={handleToolbarTouchStart}
-      onTouchMove={handleToolbarTouchMove}
-      onTouchEnd={handleToolbarTouchEnd}
       style={{
         position: 'fixed',
-        left: toolbarPos.x,
-        top: toolbarPos.y,
+        bottom: '20px',
+        left: '50%',
+        transform: 'translateX(-50%)',
         display: 'flex',
-        flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column',
+        flexDirection: 'row',
         flexWrap: 'wrap',
         maxWidth: '94vw',
         maxHeight: '90vh',
-        overflow: 'auto',
         justifyContent: 'center',
         alignItems: 'center',
         gap: '8px',
@@ -189,18 +105,13 @@ const FloatingToolbar = React.memo(({
         boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
         zIndex: 1000,
         transition: 'all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1)',
-        cursor: 'move'
       }}
     >
-      <div style={{ color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px', cursor: 'grab' }}>
-          <Grip size={20} style={{ transform: toolbarPos.orient === 'horizontal' ? 'rotate(90deg)' : 'none' }} />
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button onClick={() => fileInputRef.current.click()} style={btnStyle} title="PDF 불러오기"><FileUp size={20}/></button>
         <input type="file" ref={fileInputRef} onChange={onFileChange} accept="application/pdf" hidden />
         
-        <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
+        <div style={dividerHorizontal} />
         
         <button onClick={() => setTool('hand')} style={tool === 'hand' ? activeBtn : btnStyle}><Hand size={20}/></button>
         
@@ -274,9 +185,9 @@ const FloatingToolbar = React.memo(({
         <button onClick={handleCropTool} style={(tool === 'crop' || hasMask) ? activeBtn : btnStyle} title={hasMask ? "마스킹 해제" : "영역 잘라내기"}><Crop size={20}/></button>
       </div>
       
-      <div style={toolbarPos.orient === 'horizontal' ? dividerHorizontal : dividerVertical} />
+      <div style={dividerHorizontal} />
 
-      <div ref={zoomControlRef} style={{ display: 'flex', flexDirection: toolbarPos.orient === 'horizontal' ? 'row' : 'column', gap: '12px', alignItems: 'center', position: 'relative' }}>
+      <div ref={zoomControlRef} style={{ display: 'flex', flexDirection: 'row', gap: '12px', alignItems: 'center', position: 'relative' }}>
         <span onClick={() => setShowZoomSlider(!showZoomSlider)} style={{ fontSize: '13px', color: '#666', fontWeight: 'bold', cursor: 'pointer', userSelect: 'none' }} title="클릭하여 확대/축소">
           {Math.round(stageScale * 100)}%
         </span>
@@ -336,11 +247,15 @@ const UltimateSmartBoard = () => {
   const isDrawing = useRef(false);
   const lastDist = useRef(0);
   const lastCenter = useRef(null);
+  const linesRef = useRef(lines); // lines 상태를 추적하는 ref
+
+  // lines가 변경될 때마다 ref 업데이트 (렌더링 중에 수행)
+  linesRef.current = lines;
 
   const activePen = pens[activePenId];
-  const updateActivePen = (updates) => {
+  const updateActivePen = useCallback((updates) => {
     setPens(prev => prev.map((p, i) => i === activePenId ? { ...p, ...updates } : p));
-  };
+  }, [activePenId]);
 
   // 전체화면 변경 감지
   React.useEffect(() => {
@@ -349,7 +264,7 @@ const UltimateSmartBoard = () => {
     return () => document.removeEventListener('fullscreenchange', handleFullScreenChange);
   }, []);
 
-  const toggleFullScreen = () => {
+  const toggleFullScreen = useCallback(() => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen();
     } else {
@@ -357,15 +272,15 @@ const UltimateSmartBoard = () => {
         document.exitFullscreen();
       }
     }
-  };
+  }, []);
 
-  const handleFileChange = (e) => {
+  const handleFileChange = useCallback((e) => {
     const file = e.target.files[0];
     if (file) {
       setPdfImage(null);
       setPdfFile(file);
     }
-  };
+  }, []);
 
   // --- [최적화 포인트] PDF 렌더링 고속화 로직 ---
   const onRenderSuccess = useCallback(async (page) => {
@@ -451,7 +366,7 @@ const UltimateSmartBoard = () => {
     }
 
     setLines(prev => [...prev, newLine]);
-  }, [tool, activePen, lines]); // lines 의존성 추가 (activePen은 객체이므로 activePenId 등이 바뀌면 변경됨)
+  }, [tool, activePen]); // lines 의존성 제거 (함수형 업데이트 사용) -> 하지만 lines를 직접 참조하지 않고 setLines(prev => ...) 사용하므로 lines 의존성 필요 없음. Wait, handleMouseDown uses lines in setLines(prev => [...prev, newLine]). Correct.
 
   const handleMouseMove = useCallback((e) => {
     const stage = e.target.getStage();
@@ -551,49 +466,10 @@ const UltimateSmartBoard = () => {
     }
   }, []);
 
-  // 필압펜(속도 기반 가변 두께) 렌더링을 위한 Shape 생성 함수
-  const getPressureStrokeShape = (line) => {
-    return (context, shape) => {
-      const points = line.points;
-      if (points.length < 4) return;
-
-      context.beginPath();
-      
-      // 포인트 쌍을 순회하며 외곽선 계산
-      const p1 = { x: points[0], y: points[1] };
-      context.moveTo(p1.x, p1.y);
-
-      for (let i = 0; i < points.length - 2; i += 2) {
-        const x1 = points[i];
-        const y1 = points[i + 1];
-        const x2 = points[i + 2];
-        const y2 = points[i + 3];
-        
-        // 거리(속도) 계산
-        const dist = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-        // 속도가 빠를수록 얇게, 느릴수록 두껍게
-        // 기본 두께(penWidth)를 기준으로 조절
-        const dynamicWidth = Math.max(1, Math.min(line.strokeWidth * 2, line.strokeWidth * (10 / (dist + 1))));
-
-        // 단순화를 위해 선을 그립니다. 
-        // 완벽한 가변 두께 폴리곤을 만들려면 복잡한 기하학 계산이 필요하므로
-        // 여기서는 Konva의 strokeWidth를 동적으로 바꿀 수 없으므로,
-        // 각 세그먼트를 별도의 path로 그리거나, 
-        // 전체를 하나의 가변 두께 스트로크처럼 보이게 하는 알고리즘이 필요합니다.
-        // 여기서는 간단히 점들을 연결하되, 실제 필압 효과는 
-        // 'perfect-freehand' 같은 라이브러리 없이 구현하기 까다롭습니다.
-        // 대안으로: 각 포인트마다 원을 그려서 연결하는 방식(브러시 효과)을 사용하거나
-        // 단순히 선을 긋습니다.
-        // 요청하신 '속도기반 가변 굵기'를 위해선 각 세그먼트마다 다른 굵기의 선을 그리는게 낫지만
-        // Konva Shape 내에서는 fillStrokeShape가 한 번 호출되므로 단일 경로입니다.
-        // 따라서 여기서는 Shape 대신 Layer에서 별도로 처리하는 것이 낫지만,
-        // 성능상 Shape 하나로 처리하려면 복잡합니다.
-        // 일단 기본 선으로 처리하되, 아래 Layer 렌더링 부분에서 로직을 분리하겠습니다.
-        context.lineTo(x2, y2);
-      }
-      context.strokeShape(shape);
-    };
-  };
+  const handleResetZoom = useCallback(() => {
+    setStageScale(1);
+    setStagePos({x:0, y:0});
+  }, []);
 
   // 핀치 줌 헬퍼 함수
   const getDistance = (p1, p2) => {
@@ -666,14 +542,18 @@ const UltimateSmartBoard = () => {
   // 마스킹 여부 확인 및 토글 함수
   const hasMask = lines.some(line => line.tool === 'rect');
   
-  const handleCropTool = () => {
-    if (hasMask) {
-      setLines(lines.filter(line => line.tool !== 'rect'));
+  const handleCropTool = useCallback(() => {
+    // linesRef.current를 사용하여 최신 lines 상태에 접근
+    const currentLines = linesRef.current;
+    const isMasked = currentLines.some(line => line.tool === 'rect');
+
+    if (isMasked) {
+      setLines(prev => prev.filter(line => line.tool !== 'rect'));
       setTool('pen');
     } else {
-      setTool(tool === 'crop' ? 'pen' : 'crop');
+      setTool(prev => prev === 'crop' ? 'pen' : 'crop');
     }
-  };
+  }, []);
 
   // 메인 캔버스 영역 메모이제이션 (툴바 이동 시 리렌더링 방지)
   const boardContent = React.useMemo(() => (
@@ -795,7 +675,7 @@ const UltimateSmartBoard = () => {
       <FloatingToolbar 
         tool={tool} setTool={setTool}
         pens={pens} activePenId={activePenId} setActivePenId={setActivePenId} updateActivePen={updateActivePen}
-        stageScale={stageScale} onZoomChange={handleZoomChange} onResetZoom={() => {setStageScale(1); setStagePos({x:0, y:0});}}
+        stageScale={stageScale} onZoomChange={handleZoomChange} onResetZoom={handleResetZoom}
         isFullScreen={isFullScreen} toggleFullScreen={toggleFullScreen}
         hasMask={hasMask} handleCropTool={handleCropTool}
         onFileChange={handleFileChange}
