@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Stage, Layer, Image, Rect, Line, Shape } from 'react-konva';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize, Highlighter, PenTool } from 'lucide-react';
+import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize, Highlighter, PenTool, LayoutGrid } from 'lucide-react';
 
 // 최신 라이브러리 환경에 맞는 워커 설정
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
@@ -29,7 +29,8 @@ const FloatingToolbar = React.memo(({
   stageScale, onZoomChange, onResetZoom,
   isFullScreen, toggleFullScreen,
   hasMask, handleCropTool,
-  onFileChange 
+  onFileChange,
+  onOpenPageSelector
 }) => {
   const [showPenSettings, setShowPenSettings] = useState(false);
   const [penSettingsPos, setPenSettingsPos] = useState({ top: 0, left: 0 });
@@ -108,6 +109,7 @@ const FloatingToolbar = React.memo(({
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'row', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <button onClick={onOpenPageSelector} style={btnStyle} title="페이지 목록"><LayoutGrid size={20}/></button>
         <button onClick={() => fileInputRef.current.click()} style={btnStyle} title="PDF 불러오기"><FileUp size={20}/></button>
         <input type="file" ref={fileInputRef} onChange={onFileChange} accept="application/pdf" hidden />
         
@@ -242,6 +244,9 @@ const UltimateSmartBoard = () => {
   const [bgColor, setBgColor] = useState('#ffffff');
   const [currentCrop, setCurrentCrop] = useState(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [numPages, setNumPages] = useState(null);
+  const [currPage, setCurrPage] = useState(1);
+  const [showPageSelector, setShowPageSelector] = useState(false);
   
   const stageRef = useRef(null);
   const isDrawing = useRef(false);
@@ -279,7 +284,22 @@ const UltimateSmartBoard = () => {
     if (file) {
       setPdfImage(null);
       setPdfFile(file);
+      setCurrPage(1);
     }
+  }, []);
+
+  const onDocumentLoadSuccess = useCallback(({ numPages }) => {
+    setNumPages(numPages);
+    setShowPageSelector(true);
+  }, []);
+
+  const changePage = useCallback((pageNumber) => {
+    setCurrPage(pageNumber);
+    setShowPageSelector(false);
+    setPdfImage(null);
+    setLines([]); // 새 페이지 판서 초기화
+    setStageScale(1); // 줌 배율 100%로 리셋
+    setStagePos({ x: 0, y: 0 }); // 화면 위치 좌상단으로 리셋
   }, []);
 
   // --- [최적화 포인트] PDF 렌더링 고속화 로직 ---
@@ -301,15 +321,31 @@ const UltimateSmartBoard = () => {
     };
     await page.render(renderContext).promise;
     
-    // 3. 배경색 추출 (효율적인 메모리 접근)
-    const pixel = ctx.getImageData(0, 0, 1, 1).data;
-    const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
-    setBgColor(hex);
+    // 3. 배경색 추출 (주조색 계산: 가장 많이 사용된 색상 선택)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    const colorCounts = {};
+    let maxCount = 0;
+    let dominantColor = '#ffffff';
 
-    // 4. 여백 처리
-    ctx.fillStyle = hex;
-    ctx.fillRect(0, 0, canvas.width, canvas.height * 0.15);
-    ctx.fillRect(0, canvas.height * 0.85, canvas.width, canvas.height * 0.15);
+    // 전체 픽셀을 검사하면 느리므로 50픽셀 간격으로 샘플링하여 성능 최적화
+    const step = 4 * 50; 
+    for (let i = 0; i < data.length; i += step) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+      
+      colorCounts[hex] = (colorCounts[hex] || 0) + 1;
+      if (colorCounts[hex] > maxCount) {
+        maxCount = colorCounts[hex];
+        dominantColor = hex;
+      }
+    }
+    setBgColor(dominantColor);
+
+    // 4. 여백 처리 제거 (PDF 상하단 내용이 가려지는 문제 해결)
+    // 원본 PDF 내용을 그대로 보여줍니다.
 
     // 5. [핵심] toDataURL 대신 ImageBitmap 사용하여 지연 시간 제거
     try {
@@ -560,9 +596,9 @@ const UltimateSmartBoard = () => {
     <>
       <div style={{ display: 'none' }}>
         {pdfFile && (
-          <Document file={pdfFile}>
+          <Document file={pdfFile} onLoadSuccess={onDocumentLoadSuccess}>
             <Page 
-              pageNumber={1} 
+              pageNumber={currPage} 
               onRenderSuccess={onRenderSuccess} 
               width={window.innerWidth}
               renderTextLayer={false}
@@ -592,7 +628,7 @@ const UltimateSmartBoard = () => {
           ref={stageRef}
         >
           <Layer>
-            <Rect 
+            <Rect
               width={window.innerWidth * 20} 
               height={window.innerHeight * 20} 
               x={-window.innerWidth * 10} 
@@ -667,7 +703,7 @@ const UltimateSmartBoard = () => {
         </Stage>
       </div>
     </>
-  ), [pdfFile, pdfImage, lines, tool, stageScale, stagePos, bgColor, currentCrop, onRenderSuccess, handleMouseDown, handleMouseMove, handleMouseUp, handleTouchStart, handleTouchMove, handleTouchEnd, handleWheel]);
+  ), [pdfFile, pdfImage, lines, tool, stageScale, stagePos, bgColor, currentCrop, onRenderSuccess, handleMouseDown, handleMouseMove, handleMouseUp, handleTouchStart, handleTouchMove, handleTouchEnd, handleWheel, currPage, onDocumentLoadSuccess]);
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#222', overflow: 'hidden' }}>
@@ -679,7 +715,37 @@ const UltimateSmartBoard = () => {
         isFullScreen={isFullScreen} toggleFullScreen={toggleFullScreen}
         hasMask={hasMask} handleCropTool={handleCropTool}
         onFileChange={handleFileChange}
+        onOpenPageSelector={() => setShowPageSelector(true)}
       />
+
+      {/* 페이지 선택 모달 */}
+      {showPageSelector && pdfFile && (
+        <div style={modalOverlayStyle} onClick={() => setShowPageSelector(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 20px 0', color: '#333' }}>페이지 선택</h3>
+            <Document file={pdfFile}>
+              <div style={gridStyle}>
+                {Array.from(new Array(numPages), (el, index) => (
+                  <div 
+                    key={`page_${index + 1}`} 
+                    onClick={() => changePage(index + 1)} 
+                    style={{
+                      ...thumbnailStyle,
+                      border: currPage === index + 1 ? '2px solid #6366f1' : '1px solid #eee',
+                      backgroundColor: currPage === index + 1 ? '#eef2ff' : 'white'
+                    }}
+                  >
+                    <div style={{ pointerEvents: 'none' }}>
+                      <Page pageNumber={index + 1} width={150} renderTextLayer={false} renderAnnotationLayer={false} />
+                    </div>
+                    <span style={{ marginTop: '8px', fontSize: '14px', fontWeight: '500', color: '#555' }}>{index + 1}</span>
+                  </div>
+                ))}
+              </div>
+            </Document>
+          </div>
+        </div>
+      )}
 
       {boardContent}
     </div>
@@ -690,5 +756,30 @@ const btnStyle = { padding: '8px', border: '1px solid #e5e7eb', background: '#ff
 const activeBtn = { ...btnStyle, background: '#eef2ff', border: '1px solid #6366f1', color: '#6366f1' };
 const dividerHorizontal = { width: '1px', height: '20px', background: '#eee', margin: '0 8px' };
 const dividerVertical = { width: '20px', height: '1px', background: '#eee', margin: '8px 0' };
+
+const modalOverlayStyle = {
+  position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+  backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000,
+  display: 'flex', justifyContent: 'center', alignItems: 'center',
+  backdropFilter: 'blur(5px)'
+};
+
+const modalContentStyle = {
+  width: '80%', height: '80%', backgroundColor: 'white',
+  borderRadius: '16px', padding: '24px', overflowY: 'auto',
+  boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
+  display: 'flex', flexDirection: 'column'
+};
+
+const gridStyle = {
+  display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+  gap: '20px', padding: '10px', width: '100%'
+};
+
+const thumbnailStyle = {
+  display: 'flex', flexDirection: 'column', alignItems: 'center',
+  cursor: 'pointer', padding: '10px', borderRadius: '12px',
+  transition: 'all 0.2s', boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+};
 
 export default UltimateSmartBoard;
