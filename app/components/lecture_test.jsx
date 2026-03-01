@@ -540,13 +540,20 @@ const UltimateSmartBoard = () => {
     if (e.evt.touches.length === 1) {
       handleMouseDown(e);
     } else if (e.evt.touches.length === 2) {
+      // [수정] 핀치 줌 시작 시 Konva 자체 드래그 잠시 중지 (손 도구일 때 충돌 방지)
+      const stage = stageRef.current;
+      if (stage && tool === 'hand') {
+        stage.stopDrag();
+        stage.draggable(false);
+      }
+
       isDrawing.current = false; // 그리기 중단
       const p1 = { x: e.evt.touches[0].clientX, y: e.evt.touches[0].clientY };
       const p2 = { x: e.evt.touches[1].clientX, y: e.evt.touches[1].clientY };
       lastDist.current = getDistance(p1, p2);
       lastCenter.current = getCenter(p1, p2);
     }
-  }, [handleMouseDown]);
+  }, [handleMouseDown, tool]);
 
   const handleTouchMove = useCallback((e) => {
     if (e.evt.touches.length === 1) {
@@ -588,8 +595,15 @@ const UltimateSmartBoard = () => {
   const handleTouchEnd = useCallback((e) => {
     lastDist.current = 0;
     lastCenter.current = null;
+    
+    // [수정] 터치 종료 시 손 도구라면 드래그 기능 복구
+    const stage = stageRef.current;
+    if (stage && tool === 'hand') {
+      stage.draggable(true);
+    }
+
     handleMouseUp(e);
-  }, [handleMouseUp]);
+  }, [handleMouseUp, tool]);
 
   // 마스킹 여부 확인 및 토글 함수
   const hasMask = lines.some(line => line.tool === 'rect');
