@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Stage, Layer, Image, Rect, Line, Shape } from 'react-konva';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize, Highlighter, PenTool, LayoutGrid } from 'lucide-react';
+import { FileUp, Hand, Pencil, Eraser, RotateCcw, Crop, Grip, Maximize, Minimize, Highlighter, PenTool, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // 최신 라이브러리 환경에 맞는 워커 설정
 pdfjs.GlobalWorkerOptions.workerSrc = `/pdf.worker.min.mjs`;
@@ -30,7 +30,8 @@ const FloatingToolbar = React.memo(({
   isFullScreen, toggleFullScreen,
   hasMask, handleCropTool,
   onFileChange,
-  onOpenPageSelector
+  onOpenPageSelector,
+  currPage, numPages, onPrevPage, onNextPage
 }) => {
   const [showPenSettings, setShowPenSettings] = useState(false);
   const [penSettingsPos, setPenSettingsPos] = useState({ top: 0, left: 0 });
@@ -221,6 +222,13 @@ const FloatingToolbar = React.memo(({
         )}
 
         <button onClick={onResetZoom} style={btnStyle}><RotateCcw size={18}/></button>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', margin: '0 4px' }}>
+          <button onClick={onPrevPage} disabled={currPage <= 1} style={currPage <= 1 ? disabledBtnStyle : btnStyle} title="이전 페이지"><ChevronLeft size={18}/></button>
+          <span style={{ fontSize: '12px', color: '#555', minWidth: '40px', textAlign: 'center', userSelect: 'none' }}>{currPage} / {numPages || '-'}</span>
+          <button onClick={onNextPage} disabled={!numPages || currPage >= numPages} style={(!numPages || currPage >= numPages) ? disabledBtnStyle : btnStyle} title="다음 페이지"><ChevronRight size={18}/></button>
+        </div>
+
         <button onClick={toggleFullScreen} style={btnStyle} title={isFullScreen ? "전체화면 종료" : "전체화면"}>
           {isFullScreen ? <Minimize size={18}/> : <Maximize size={18}/>}
         </button>
@@ -302,10 +310,18 @@ const UltimateSmartBoard = () => {
     setStagePos({ x: 0, y: 0 }); // 화면 위치 좌상단으로 리셋
   }, []);
 
+  const handlePrevPage = useCallback(() => {
+    if (currPage > 1) changePage(currPage - 1);
+  }, [currPage, changePage]);
+
+  const handleNextPage = useCallback(() => {
+    if (numPages && currPage < numPages) changePage(currPage + 1);
+  }, [currPage, numPages, changePage]);
+
   // --- [최적화 포인트] PDF 렌더링 고속화 로직 ---
   const onRenderSuccess = useCallback(async (page) => {
-    // 1. 초기 렌더링 배율 최적화 (2 -> 1.5로 하향하여 속도 확보)
-    const renderScale = 1.5; 
+    // 1. 렌더링 배율 상향 (1.5 -> 3.0)으로 업스케일링 (고화질 적용)
+    const renderScale = 3.0; 
     const viewport = page.getViewport({ scale: renderScale });
     
     const canvas = document.createElement('canvas');
@@ -716,6 +732,10 @@ const UltimateSmartBoard = () => {
         hasMask={hasMask} handleCropTool={handleCropTool}
         onFileChange={handleFileChange}
         onOpenPageSelector={() => setShowPageSelector(true)}
+        currPage={currPage}
+        numPages={numPages}
+        onPrevPage={handlePrevPage}
+        onNextPage={handleNextPage}
       />
 
       {/* 페이지 선택 모달 */}
@@ -754,6 +774,7 @@ const UltimateSmartBoard = () => {
 
 const btnStyle = { padding: '8px', border: '1px solid #e5e7eb', background: '#fff', color: '#374151', cursor: 'pointer', borderRadius: '4px', display: 'flex', alignItems: 'center', transition: 'all 0.2s' };
 const activeBtn = { ...btnStyle, background: '#eef2ff', border: '1px solid #6366f1', color: '#6366f1' };
+const disabledBtnStyle = { ...btnStyle, opacity: 0.5, cursor: 'not-allowed', background: '#f3f4f6' };
 const dividerHorizontal = { width: '1px', height: '20px', background: '#eee', margin: '0 8px' };
 const dividerVertical = { width: '20px', height: '1px', background: '#eee', margin: '8px 0' };
 
